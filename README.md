@@ -1,11 +1,11 @@
 # VulkanXMRMiner
 
-This program is a Vulkan SPIR-V based miner for Cryptonight:<br/>
-<img src="https://monero.org/wp-content/uploads/2015/03/logo-big.jpg" height="67" width="250" >     <img src="http://wownero.org/images/wow.png" height="40" width="200" >     <img src="https://www.aeon.cash/branding/aeon_logo_32x32.png" height="67" width="80" >
-
-This miner is based on Vulkan technology (not OpenCL):
+This program is a Vulkan SPIR-V based miner for the Cryptonight familly:<br/><br/>
+<img src="https://monero.org/wp-content/uploads/2015/03/logo-big.jpg" height="67" width="250" >&nbsp;&nbsp;&nbsp;<img src="http://wownero.org/images/wow.png" height="40" width="160" >&nbsp;&nbsp;&nbsp;<img src="https://www.aeon.cash/branding/aeon_logo_32x32.png" height="67" width="80" >
+<br/><br/><br/>
+This miner is based on Vulkan and SPIR-V technology (<b>not</b> OpenCL):<br/>
 <img src="https://www.khronos.org/assets/uploads/apis/vulkan2.svg" height="67" width="250" ><img src="https://www.khronos.org/assets/uploads/ceimg/made/assets/uploads/apis/SPIR_100px_June16_150_75.png" height="67" width="250" >
-
+<br/><br/><br/>
 What's Vulkan:<br/>
 >Vulkan is a new generation graphics and compute API that provides high-efficiency, cross-platform access to modern GPUs used in a wide variety of devices from PCs and consoles to mobile phones and embedded platforms.
 
@@ -78,5 +78,12 @@ Number of CU x Factor x 2 Mb (1Mb for Cryptonight light)<br/>
 56 * 64 * 2 = 7168 Mb of Video RAM. <br/>
 
 # Build
-For Windows,use Eclipse CDT, Mingw and the Vulkan SDK. Import the project from Githib and build it.<br/>
-For Linux users TBD. 
+cmake is required to perform the build.<br />
+>git clone https://github.com/enerc/VulkanXMRMiner.git<br/>
+>cd VulkanXMRMiner<br/>
+>mkdir build<br/>
+>cd build<br/>
+>For Windows:<br/>
+> cmake  -DWIN32 ..<br/>
+>For Linux<br/>
+> cmake ..<br/>
