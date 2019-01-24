@@ -12,8 +12,8 @@ What's Vulkan:<br/>
 This program should work on any Vulkan 1.0 compatible device: AMD, Intel, Nvidia.
 
 # Download and run
-You can get Windows binaries here:  <a href="https://github.com/enerc">Download</a> <br />
-You can get Linux binaries here:  <a href="https://github.com/enerc">Download</a> <br />
+You can get Windows binaries here:  <a href="https://github.com/enerc/VulkanXMRMiner/blob/master/dist/vulkanXMRMiner.zip?raw=true">Download as zip file</a> <br />
+You can get Linux binaries here:  <a href="https://github.com/enerc/VulkanXMRMiner/blob/master/dist/vulkanXMRMiner.tgz?raw=true">Download binaries as compressed tar file</a> <br />
 
 Extract the zip file, and run Miner.exe / Miner.<br/>
 
@@ -29,7 +29,7 @@ Vega56 1500/945&nbsp;&nbsp;: 1625 H/s on Linux Rocm 2.0 (200 W)<br />
 Vega56 1200/800&nbsp;&nbsp;: 1460 H/s on Linux Rocm 2.0 (100 W)<br />
 R9 Fury 1050/500&nbsp;: 835 H/s on Windows 10<br />
 R9 Fury 1050/500&nbsp;: 835 H/s on Linux ROCM 2.0 (185 W)<br />
-R9 Fury 874/500&nbsp;&nbsp;: 700 H/s on Linux ROCM 2.0 (100 >)<br/>
+R9 Fury 874/500&nbsp;&nbsp;: 700 H/s on Linux ROCM 2.0 (100 W)<br/>
 RX560 1000/1850&nbsp;&nbsp;: 410 H/s on Linux amdgpu-pro (25 W)<br />
 RX550 1000/1800&nbsp;&nbsp;: 330 H/s on Linux amdgpu-pro (16 W)<br />
 </span>
@@ -38,7 +38,7 @@ RX550 1000/1800&nbsp;&nbsp;: 330 H/s on Linux amdgpu-pro (16 W)<br />
 <span style="font-family: monospace;">
 Vega56 1500/1075&nbsp;: 1805 H/s on Windows 10 (200 W)<br />
 R9 Fury 1050/500&nbsp;: 833 H/s on Windows 10<br />
-R9 Fury 874/500&nbsp;&nbsp;: 700 H/s on Linux ROCM 2.0 (100 >)<br/>
+R9 Fury 874/500&nbsp;&nbsp;: 700 H/s on Linux ROCM 2.0 (100 W)<br/>
 </span>
 
 ## on CN Light V7 (Aeon)
@@ -57,7 +57,7 @@ It is recommended to check your configuration with vulkaninfo that you can get w
 <br/>
 As for Windows, check the installation with vulkaninfo.<br/>
 If it does not work, check that the ICD is properly configured.
-In /etc/vulkan/icd.d/ there should be a file with sothing like:
+In /etc/vulkan/icd.d/ there should be a file with something like:
 >{<br/>
     "file_format_version" : "1.0.0",<br/>
     "ICD" : {<br/>
@@ -66,24 +66,30 @@ In /etc/vulkan/icd.d/ there should be a file with sothing like:
     }<br/>
 }<br/>
 
+# Windows TDR
+When mining under Windows and using optimized settings, the driver might reset and the miner will stop with the error "Device Lost". This is caused by the Timeout Detection and Recovery feature triggered when a kernel works for more than 2 seconds.<br/>
+Either change the TdrDelay key in HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\GraphicsDrivers or create a TdrLevel entry with value 0 (TdrLevelOff).
+
 # Configuration
 When entering the miner, a setup menu will be shown if there are no config.json file there.<br />
 - on wallet_address you can add a worker/farm id by adding .your_farm after the address
 - The cu parameter is the number of compute units (AMD terminology) / Stream Multiprocessors(Nvidia).<br />
-- The factor is how many threads are sent to each cu. <br/>
-- The worksize is the number of threads per cu at a given time.<br/>
+- The factor is how many threads are sent to each CU. <br/>
+- The worksize is the number of threads per CU at a given time.<br/>
 - Used memory is given by: <br/>
 Number of CU x Factor x 2 Mb (1Mb for Cryptonight light)<br/>
 - So for example a 56 CU with a factor 64 on Monero will use:<br/>
-56 * 64 * 2 = 7168 Mb of Video RAM. <br/>
+56 x 64 x 2 = 7168 Mb of Video RAM. <br/>
 
 # Build
-cmake is required to perform the build.<br />
+cmake is required to perform the build. Set environment variable VULKAN_SDK for custom vulkan libraries or when cross building for Windows.<br />
 >git clone https://github.com/enerc/VulkanXMRMiner.git<br/>
 >cd VulkanXMRMiner<br/>
 >mkdir build<br/>
 >cd build<br/>
 >For Windows:<br/>
-> cmake  -DWIN32 ..<br/>
+> cmake  -DWIN32=1 ..<br/>
 >For Linux<br/>
 > cmake ..<br/>
+
+Extract vulkanXMRMiner.zip or vulkanXMRMiner.tgz and start the miner.
