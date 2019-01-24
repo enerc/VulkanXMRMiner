@@ -1,9 +1,14 @@
 #
 # Cryptonight Vulkan Mining Software
 #
-cmake_minimum_required(VERSION 3.13.0)
+cmake_minimum_required(VERSION 3.5.0)
 
 project(VulkanXMRMiner)
+
+# enforce C++11
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 11)
 
 # change the processor target here if needed
 set(ARCH "native")
@@ -65,7 +70,7 @@ add_custom_command(TARGET miner POST_BUILD
 
 # make the download file for Linux
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-	add_custom_target(zip ALL COMMAND
+	add_custom_target(zip ALL DEPENDS miner COMMAND
     ${CMAKE_COMMAND} -E tar "zcvf" "vulkanXMRMiner.tgz"
     "miner"
     "spirv"
@@ -75,7 +80,7 @@ endif()
 
 # same as Linux, but add mingw runtime DLLs.
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
-	add_custom_target(zip ALL COMMAND
+	add_custom_target(zip ALL DEPENDS miner COMMAND
     ${CMAKE_COMMAND} -E tar "cvf" "vulkanXMRMiner.zip" --format=zip
     "miner.exe"
     "spirv"
