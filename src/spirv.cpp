@@ -101,7 +101,10 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 	s << "layout(binding = 0) buffer scratchpadsBuffer1 { uvec4 scratchpad1[]; };layout(binding = 1) buffer scratchpadsBuffer2 { uvec4 scratchpad2[]; };layout(binding = 2) buffer statesBuffer { uint64_t states[]; };layout(binding = 4) buffer Params { uint64_t target;uint memorySize;uint global_work_offset;uint iterations;uint mask;uint threads;uint scratchpatSplit;};layout(binding = 5) buffer constants{uint AES0_C[256];};layout(binding = 6) buffer inputsBuffer {uint64_t inputs[];};\n";
 	s << "layout (local_size_x = " << localSize << ", local_size_y = 1) in;\n";
 	s << "shared uint AES0[256], AES1[256], AES2[256], AES3[256];\n";
-	s << "#define INDEX(v)  (scratchpadOffset + ((idx0 >> 4) ^ v))\n";
+	s << "#define INDEX0  (scratchpadOffset + ((idx0 >> 4)))\n";
+	s << "#define INDEX1  (scratchpadOffset + ((idx0 >> 4) ^ 1))\n";
+	s << "#define INDEX2  (scratchpadOffset + ((idx0 >> 4) ^ 2))\n";
+	s << "#define INDEX3  (scratchpadOffset + ((idx0 >> 4) ^ 3))\n";
 	s << "#define BYTE(x,b)  ((x) >> (8*(b)))&0xff\n";
 	if (light)
 		s << "#define SCRATCHPAD_SPLIT 3584\n";
@@ -137,7 +140,7 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 	s << "for(uint i = 0; i < iterations; ++i)\n";
 	s << "{\n";
 	const int o = hi ? 2 : 1;
-	s << "chunk0 = scratchpad" << o << "[INDEX(0)];chunk1 = scratchpad" << o << "[INDEX(1)];chunk2 = scratchpad" << o << "[INDEX(2)];chunk3 = scratchpad" << o << "[INDEX(3)];\n";
+	s << "chunk0 = scratchpad" << o << "[INDEX0];chunk1 = scratchpad" << o << "[INDEX1];chunk2 = scratchpad" << o << "[INDEX2];chunk3 = scratchpad" << o << "[INDEX3];\n";
 	s << "_chunk0 = uvec4(unpackUint2x32(a[0]),unpackUint2x32(a[1]));\n";
 	s << "_chunk0.x ^= AES0[BYTE(chunk0.x, 0)];_chunk0.y ^= AES0[BYTE(chunk0.y, 0)];_chunk0.z ^= AES0[BYTE(chunk0.z, 0)];_chunk0.w ^= AES0[BYTE(chunk0.w, 0)];\n";
 	s << "_chunk0.x ^= AES2[BYTE(chunk0.z, 2)];_chunk0.y ^= AES2[BYTE(chunk0.w, 2)];_chunk0.z ^= AES2[BYTE(chunk0.x, 2)];_chunk0.w ^= AES2[BYTE(chunk0.y, 2)];\n";
@@ -149,9 +152,9 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 	s << "_chunk1 = uvec4(unpackUint2x32(m0),unpackUint2x32(m1));m0 = packUint2x32(chunk1.xy) + packUint2x32(b_x[0].xy);m1 = packUint2x32(chunk1.zw) + packUint2x32(b_x[0].zw);\n";
 	s << "_chunk2 = uvec4(unpackUint2x32(m0),unpackUint2x32(m1));m0 = packUint2x32(chunk2.xy) + a[0];m1 = packUint2x32(chunk2.zw) + a[1];\n";
 	s << "_chunk3 = uvec4(unpackUint2x32(m0),unpackUint2x32(m1));\n";
-	s << "scratchpad" << o << "[INDEX(0)] = _chunk0;scratchpad" << o << "[INDEX(1)] = _chunk1;scratchpad" << o << "[INDEX(2)] = _chunk2;scratchpad" << o << "[INDEX(3)] = _chunk3;\n";
+	s << "scratchpad" << o << "[INDEX0] = _chunk0;scratchpad" << o << "[INDEX1] = _chunk1;scratchpad" << o << "[INDEX2] = _chunk2;scratchpad" << o << "[INDEX3] = _chunk3;\n";
 	s << "idx0 = uint(c[0]) & mask;\n";
-	s << "_chunk0 = scratchpad" << o << "[INDEX(0)];_chunk1 = scratchpad" << o << "[INDEX(1)];_chunk2 = scratchpad" << o << "[INDEX(2)];_chunk3 = scratchpad" << o << "[INDEX(3)];\n";
+	s << "_chunk0 = scratchpad" << o << "[INDEX0];_chunk1 = scratchpad" << o << "[INDEX1];_chunk2 = scratchpad" << o << "[INDEX2];_chunk3 = scratchpad" << o << "[INDEX3];\n";
 	s << "tmp = _chunk0;\n";
 	if (randomMath64) {
 		s << "const uint64_t random_math_result = (r0 + r1) ^ (r2 + r3);\n";
@@ -168,7 +171,7 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 	s << "m0 = packUint2x32(_chunk1.xy) + packUint2x32(b_x[0].xy);m1 = packUint2x32(_chunk1.zw) + packUint2x32(b_x[0].zw);chunk2 = uvec4(unpackUint2x32(m0),unpackUint2x32(m1));\n";
 	s << "m0 = packUint2x32(_chunk2.xy) + a[0];m1 = packUint2x32(_chunk2.zw) + a[1];chunk3 = uvec4(unpackUint2x32(m0),unpackUint2x32(m1));\n";
 	s << "a[1] += result_mul[1];a[0] += result_mul[0];chunk0 = uvec4(unpackUint2x32(a[0]),unpackUint2x32(a[1]));\n";
-	s << "scratchpad" << o << "[INDEX(0)] = chunk0;scratchpad" << o << "[INDEX(1)] = chunk1;scratchpad" << o << "[INDEX(2)] = chunk2;scratchpad" << o << "[INDEX(3)] = chunk3;\n";
+	s << "scratchpad" << o << "[INDEX0] = chunk0;scratchpad" << o << "[INDEX1] = chunk1;scratchpad" << o << "[INDEX2] = chunk2;scratchpad" << o << "[INDEX3] = chunk3;\n";
 	s << "a[0] ^= packUint2x32(tmp.xy);a[1] ^= packUint2x32(tmp.zw);b_x[1] = b_x[0];b_x[0] = uvec4(unpackUint2x32(c[0]),unpackUint2x32(c[1]));idx0 = uint(a[0]) & mask;}}\n";
 
 
