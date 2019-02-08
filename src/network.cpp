@@ -612,9 +612,11 @@ uint32_t getVariant() {
 		return 2;			// CN V8
 	if (cryptoType[current_index] == WowneroCrypto) {
 		if (major_version == 10)
-			return 2;			// CN V8
-		if (major_version == 11)
-			return 4;			// CryptonightR
+			return 2;				// CN V8
+		if (major_version == 11)	// new PoW, DA, update BPs
+			return 4;
+		if (major_version == 12)	// switch to fee per byte
+			return 4;
 	}
 	if (cryptoType[current_index] == MoneroCrypto) {
 		if (major_version == 10)
