@@ -43,6 +43,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "slow_hash.hpp"
 #include "miner.hpp"
 #include "spirv.hpp"
+#include "httpConsole.hpp"
 
 using namespace std;
 
@@ -104,8 +105,10 @@ int main(int argc, char **argv) {
 
 	CPUMiner cpuMiner;
 	memset(&cpuMiner, 0, sizeof(cpuMiner));
-	cpuMiner.isLight = config.isLight;
+	cpuMiner.memFactor = config.memFactor;
 	cpuMiner.type = config.type;
+	cpuMiner.debugNetwork = config.debugNetwork;
+	cpuMiner.hp_state = nullptr;
 
 	initNetwork(cpuMiner);
 	initMiners();
@@ -129,12 +132,17 @@ int main(int argc, char **argv) {
 	pthread_t threads[MAX_GPUS];
 	VulkanMiner miners[MAX_GPUS];
 	for (int i = 0; i < config.nbGpus; i++) {
+		char deviceName[256];
 		int devId = config.gpus[i].index;
+		getDeviceName(devId,deviceName);
+		registerGpuName(i,deviceName);
 		VkDevice vkDevice = createDevice(devId, getComputeQueueFamillyIndex(devId));
 		initVulkanMiner(miners[i], vkDevice, cpuMiner, config.gpus[i].cu * config.gpus[i].factor, config.gpus[i].worksize, config.gpus[i].cu, devId, i);
 		loadSPIRV(miners[i]);
 		pthread_create(&threads[i], NULL, MinerThread, &miners[i]);
 	}
+	pthread_t consoleThread = startConsoleBG(config.consoleListenPort);
+	setFrequency(30);
 
 	cout << "Mining started.... (Press q to stop)\n";
 	cout << "[Time] 'Total H/s' 'Good shares'/'Invalid shares'/'Expired shares' [GPU] H/s 'good hashes'/'bad hashes' \n";
@@ -175,14 +183,18 @@ int main(int argc, char **argv) {
 			float hashesPerSec = 0;
 			for (int i = 0; i < config.nbGpus; i++)
 				hashesPerSec += (mHashrate[i] / 1000.0);
+			setHashesPerSec(hashesPerSec);
 
 			int totalShares = 0;
 			for (int i = 0; i < config.nbGpus; i++)
 				totalShares += getGoodHash(i);
+			setTotalShares(totalShares);
 
 			cout << START_LIGHT_GREEN << hashesPerSec << "H/s " << START_GREEN << totalShares << "/" << getInvalidShares() << "/" << getExpiredShares() << " ";
-			for (int i = 0; i < config.nbGpus; i++)
+			for (int i = 0; i < config.nbGpus; i++) {
+				setHashRate(i,mHashrate[i] / 1000.0);
 				cout << "[" << i << "]:" << (mHashrate[i] == 0 ? START_STUCKED : "") << (mHashrate[i] / 1000.0) << START_GREEN << "H/s " << getGoodHash(i) << "/" << getBadHash(i) << "  ";
+			}
 			cout << START_WHITE << "\n";
 			loop = 1;
 		} else
@@ -196,6 +208,10 @@ int main(int argc, char **argv) {
 	cout << "Shutdown requested....\n";
 	for (int i = 0; i < config.nbGpus; i++)
 		pthread_join(threads[i], NULL);
+
+	if (consoleThread != 0)
+		pthread_join(consoleThread, NULL);
+	stopConsoleBG();
 
 	vulkanEnd();
 #ifdef __MINGW32__

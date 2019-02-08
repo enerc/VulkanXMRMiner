@@ -70,6 +70,9 @@ int vulkanInit(){
 
 	physicalDeviceCount = 0;
 	CHECK_RESULT(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, 0),"vkEnumeratePhysicalDevices");
+	if (physicalDeviceCount == 0) {
+		exitOnError("No graphic cards were found by Vulkan. Use Adrenalin not Crimson and check your drivers with VulkanInfo.");
+	}
 
 	physicalDevices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * physicalDeviceCount);
 	memset(physicalDevices,0,sizeof(VkPhysicalDevice) * physicalDeviceCount);

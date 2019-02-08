@@ -1,7 +1,7 @@
 #ifndef CONFIG_HPP_
 #define CONFIG_HPP_
 
-#define VERSION 		"0.1"
+#define VERSION 		"0.2"
 
 #define MAX_ADRESS_SIZE 256
 #define MAX_POOLNAME_SIZE 128
@@ -12,7 +12,8 @@
 enum CryptoType {
 	MoneroCrypto,
 	WowneroCrypto,
-	AeonCrypto
+	AeonCrypto,
+	TurtleCrypto
 };
 
 // memory size = cu * factor * sizeof(scratchpad 1 or 2 MB)
@@ -24,19 +25,24 @@ typedef struct GpuConfig {
 } GpuConfig;
 
 typedef struct Config {
-	bool isLight;
+	int  memFactor;
+	int  iterationFactor;
 	char address[MAX_ADRESS_SIZE];
 	char poolAddress[MAX_POOLNAME_SIZE];
 	char poolPassword[MAX_PASSWORD_SIZE];
 	int  poolPort;
 	CryptoType type;
 	int 	nbGpus;
+	bool  debugNetwork;
+	int   consoleListenPort;
 	struct GpuConfig gpus[MAX_GPUS];
 } Config;
 
 void makeConfig();
 bool readConfig();
 bool checkConfig();
+uint32_t  getMemFactor(CryptoType);
+uint32_t  getIterationFactor(CryptoType c);
 extern Config config;
 
 #endif /* CONFIG_HPP_ */

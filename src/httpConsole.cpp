@@ -2615,7 +2615,28 @@ static void initServer(int portno) {
 	}
 }
 
-void writeContent(stringstream &w) {
+void writeJsonContent(stringstream &w) {
+	w << "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n";
+	w.unsetf(std::ios::floatfield);
+	w << fixed;
+	w.precision(1);
+
+	w << "{ ";
+	w << "\"globalHash\": " << getHashesPerSec() << ",";
+	w << "\"goodShares\": " << getTotalShares()  << ",";
+	w << "\"invalidShares\": " << getInvalidShares() << ",";
+	w << "\"expiredShares\": " << getExpiredShares() << ",";
+	w << "\"cards\": [";
+	for (int i = 0; i <= nbGpus; i++) {
+		w << "{";
+		w << "\"goodHashes\": " << getGoodHash(i) << ",";
+		w << "\"badHashes\": " << getBadHash(i) << "}";
+		if (i < nbGpus) w << ",";
+	}
+	w << "]}";
+}
+
+void writeHtmlContent(stringstream &w) {
 	w << "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";
 	w << textHeader;
 	w.unsetf(std::ios::floatfield);
@@ -2712,7 +2733,6 @@ void writeContent(stringstream &w) {
 }
 
 void stopConsoleBG() {
-	puts("Close cosket");
 #ifndef __MINGW32__
 	shutdown(sockfd, SHUT_RDWR);
 #endif
@@ -2734,7 +2754,7 @@ void *consoleThread(void *args) {
 #endif
 		newsockfd = accept(sockfd, (struct sockaddr *) &cli_addr, &clilen);
 		if (newsockfd < 0) {
-			error("ERROR on accept", NULL);
+			//error("ERROR on accept", NULL);
 			continue;
 		}
 
@@ -2749,7 +2769,11 @@ void *consoleThread(void *args) {
 		}
 
 		stringstream w;
-		writeContent(w);
+		const char *needle = "/status.json";
+		if (strstr(buffer,needle) != NULL)
+			writeJsonContent(w);
+		else
+			writeHtmlContent(w);
 
 		// Write a response to the client
 		n = write(newsockfd, w.str().c_str(), w.str().size());

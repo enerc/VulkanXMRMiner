@@ -40,9 +40,37 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "mvulkan.hpp"
 
 using namespace std;
-static const char *CryptoNames[] = { "monero", "wownero", "aeon" };
+static const char *CryptoNames[] = { "monero", "wownero", "aeon" , "turtlecoin"};
 
 Config config;
+
+uint32_t  getMemFactor(CryptoType c) {
+	switch (c) {
+	case MoneroCrypto:
+		return 1;
+	case WowneroCrypto:
+		return 1;
+	case AeonCrypto:
+		return 2;
+	case TurtleCrypto:
+		return 8;
+	}
+	return 1;
+}
+
+uint32_t  getIterationFactor(CryptoType c) {
+	switch (c) {
+	case MoneroCrypto:
+		return 1;
+	case WowneroCrypto:
+		return 1;
+	case AeonCrypto:
+		return 2;
+	case TurtleCrypto:
+		return 8;
+	}
+	return 1;
+}
 
 static const char* getJSONEntryLocation(const char *s, int len, const char *needle, bool isFatal)  {
 	const char *loc = strstr(s, needle);
@@ -105,6 +133,9 @@ static string createJsonFromConfig() {
 	s << " \"pool_address\" : \"" << config.poolAddress << ":" << config.poolPort<< "\",\n";
 	s << " \"wallet_address\" : \"" << config.address << "\",\n";
 	s << " \"pool_password\" : \"" << config.poolPassword << "\",\n";
+	s << " \"debug_network\" : \"" << (config.debugNetwork? "true" : "false") << "\",\n";
+	s << " \"console_listen_port\" : \"" << config.consoleListenPort << "\",\n";
+
 	s << " \"cards\" : [\n";
 	for (int i=0; i < config.nbGpus; i++) {
 		s << "  {\n";
@@ -129,18 +160,20 @@ static void decodeConfig(const char *conf)  {
 	// decode crypto name
 	loc = getJSONEntryLocation(conf,len,"crypto",false);
 	config.type = MoneroCrypto;
-	config.isLight = false;
 	if (loc != nullptr) {
 		fillStringProperty(tmp,128,loc);
 		if (strcmp(tmp,"wownero") == 0) config.type = WowneroCrypto;
 		else if (strcmp(tmp,"monero") == 0) config.type = MoneroCrypto;
 		else if (strcmp(tmp,"aeon") == 0) {
 			config.type = AeonCrypto;
-			config.isLight = true;
+		} else if (strcmp(tmp,"turtlecoin") == 0) {
+			config.type = TurtleCrypto;
 		} else {
 			error("unrecognized crypto name","assume Monero");
 		}
 	}
+	config.memFactor = getMemFactor(config.type);
+	config.iterationFactor = getIterationFactor(config.type);
 
 	// decode wallet
 	loc = getJSONEntryLocation(conf,len,"pool_address",true);
@@ -161,6 +194,23 @@ static void decodeConfig(const char *conf)  {
 	// decode password - can be empty but must be defined
 	loc = getJSONEntryLocation(conf,len,"pool_password",true);
 	fillStringProperty(config.poolPassword,MAX_PASSWORD_SIZE,loc);
+
+	loc = getJSONEntryLocation(conf,len,"debug_network",false);
+	if (loc != nullptr) {
+		fillStringProperty(tmp,128,loc);
+		config.debugNetwork = strcmp(tmp,"true") == 0;
+	} else
+		config.debugNetwork = false;
+
+	loc = getJSONEntryLocation(conf,len,"console_listen_port",false);
+	if (loc != nullptr) {
+		fillStringProperty(tmp,128,loc);
+		config.consoleListenPort = atoi(tmp);
+	} else
+		config.consoleListenPort = 0;
+
+	loc = getJSONEntryLocation(conf,len,"wallet_address",true);
+	fillStringProperty(config.address,MAX_ADRESS_SIZE,loc);
 
 	loc = getJSONEntryLocation(conf,len,"cards",true);
 	int cardIndex = 0;
@@ -240,7 +290,8 @@ select1:
 	cout << "Select a crypto:\n";
 	cout << " 0 for Monero\n";
 	cout << " 1 for Wownero\n";
-	cout << " 2 for Aeon - cryptonight light\n";
+	cout << " 2 for Aeon,Bittorium - cryptonight light\n";
+	cout << " 3 for TurtleCoin\n";
 	cout << "Your crypto: ";
 	config.type = MoneroCrypto;
     std::getline(cin, input );
@@ -250,11 +301,12 @@ select1:
         stream >> s;
         config.type = (CryptoType)s;
     }
-	if (config.type > AeonCrypto) {
+	if (config.type > TurtleCrypto) {
 		cout << "Wrong selection!!\n";
 		goto select1;
 	}
 
+	// figlet
 	switch (config.type) {
 		case MoneroCrypto:
 			cout<<" __  __							 \n";
@@ -278,10 +330,18 @@ select1:
 			cout<<" / ___ \\  __/ (_) | | | |  \n";
 			cout<<"/_/   \\_\\___|\\___/|_| |_|  \n";
 			break;
+
+		case TurtleCrypto:
+			cout<<" _____           _   _         ____      _\n";
+			cout<<"|_   _|   _ _ __| |_| | ___   / ___|___ (_)_ __\n";
+			cout<<"  | || | | | '__| __| |/ _ \\ | |   / _ \\| | '_ \\ \n";
+			cout<<"  | || |_| | |  | |_| |  __/ | |__| (_) | | | | |\n";
+			cout<<"  |_| \\__,_|_|   \\__|_|\\___|  \\____\\___/|_|_| |_|\n";
+
 	}
 
 	cout << "\n";
-	config.isLight = config.type == AeonCrypto;
+	config.memFactor = getMemFactor(config.type);
 
 select2:
 	cout << "Mining pool address (hostname/IP): ";
@@ -325,6 +385,15 @@ select4:
     	config.poolPassword[1] = 0;
     }
 
+select5:
+   	cout << "Monitoring listen port (0 if no JSON/graphic console): ";
+	getline(cin, input );
+	if ( input.empty() ) goto select5;
+	else {
+		istringstream stream( input );
+		stream >> config.consoleListenPort;
+	}
+
 	int nbDevices = vulkanInit();
 
 	cout << "\nChecking your cards\n";
@@ -339,7 +408,7 @@ select4:
 	for (int i=0; i< nbDevices; i++ ) {
 		VkDevice d = createDevice(i,getComputeQueueFamillyIndex(i));
 		int cu,local_size,factor;
-		findBestSetting(d,i,cu,factor,local_size,config.isLight);
+		findBestSetting(d,i,cu,factor,local_size,config.memFactor);
 		cout << "Card:" << i << "  " << cu << " Compute Units/Stream Multiprocessors";
 		cout << ", using factor " << factor << " (" << (factor*cu) << " threads)";
 		cout << ", local size " << local_size << "\n";
@@ -404,7 +473,6 @@ selectWS:
 #ifdef __MINGW32__
 	Sleep(4);				// time to read before cmd exit
 #endif
-	exit(0);
 }
 
 bool readConfig() {
