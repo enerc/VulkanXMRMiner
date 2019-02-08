@@ -50,7 +50,18 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define MAX_HOSTNAME_SIZE 256
 #define MAX_INVALID_SHARES 10
 #define MAX_ID_SIZE		   64
-#define QUEUE_SIZE 64
+#define QUEUE_SIZE 		64
+#define NONCE_LOCATION	39
+
+#ifdef __MINGW32__
+static const char *START_YELLOW="";
+static const char *START_WHITE="";
+static const char *START_RED="";
+#else
+static const char *START_YELLOW ="\e[33m";
+static const char *START_WHITE = "\e[39m";
+static const char *START_RED=	 "\e[91m";
+#endif
 
 static int connections[2];
 static char hexBlob[MAX_BLOB_SIZE];
@@ -86,6 +97,9 @@ struct MsgResult {
 };
 static struct MsgResult msgResult[QUEUE_SIZE];
 static const uint64_t TimeRotate = 60LL*100LL*1000LL*1000LL;
+static bool debugNetwork;
+static float hashesPerSec;
+static uint32_t totalShares;
 
 using namespace std;
 
@@ -119,12 +133,19 @@ static bool isRetStatusOk(const char *msg) {
 	const int needleLen = strlen(needle);
 
 	const char *loc = strstr(msg, needle);
-	if (loc == NULL)
-		return false;
-	if (loc[needleLen] == 'O' && loc[needleLen + 1] == 'K')
+	if (loc != NULL && (loc[needleLen] == 'O' && loc[needleLen + 1] == 'K')) {
 		return true;
-	else
-		return false;
+	}
+
+	const char *needle2 = "Your IP is banned";
+	loc = strstr(msg, needle2);
+	if (loc != NULL) {
+		cout << START_RED << "Your IP is banned" << START_WHITE << "\n";
+	} else
+		cout << START_RED << "Login fails: " << msg << START_WHITE << "\n";
+
+	connections[current_index] = 0;
+	return false;
 }
 
 static int hex2c(char c) {
@@ -137,12 +158,12 @@ static int hex2c(char c) {
 	return 0; // ??
 }
 
-void hex2bin(const char* in, unsigned int len, unsigned char* out) {
+static void hex2bin(const char* in, unsigned int len, unsigned char* out) {
 	for (unsigned int i = 0; i < len; i += 2)
 		out[i / 2] = (hex2c(in[i]) << 4) | hex2c(in[i + 1]);
 }
 
-void bin2hex(const unsigned char* in, unsigned int len, unsigned char* out) {
+static void bin2hex(const unsigned char* in, unsigned int len, unsigned char* out) {
 	for (unsigned int i = 0; i < len; i++) {
 		out[i * 2] = CONVHEX[in[i] >> 4];
 		out[i * 2 + 1] = CONVHEX[in[i] & 0xf];
@@ -177,8 +198,6 @@ static bool getBlob(const char *msg) {
 	blobSize = i / 2;
 	sem_post(&mutex);
 
-	// new block -> discard pending results to send since they will be rejected anyway
-	tail = head;
 	return true;
 }
 
@@ -260,7 +279,6 @@ static bool decodeHeight(const char *msg) {
 	}
 	tmp[i] = 0;
 	height = atol(tmp);						// atomic write
-	tail = head;
 	return true;
 }
 
@@ -275,7 +293,7 @@ void getCurrentBlob(unsigned char *input, int *size) {
 
 void applyNonce(unsigned char *input, int nonce) {
 	// add the nonce starting at pos 39.
-	*(uint32_t *) (input + 39) = nonce;
+	*(uint32_t *) (input + NONCE_LOCATION) = nonce;
 }
 
 bool lookForPool(const char *hostname, int port, int index) {
@@ -300,7 +318,7 @@ bool lookForPool(const char *hostname, int port, int index) {
 
 	// Create socket
 	int soc = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-	if (soc < 0) {
+	if (soc < 0 && index == 0) {
 		exitOnError("Can't create socket");
 		return false;
 	}
@@ -319,7 +337,7 @@ bool lookForPool(const char *hostname, int port, int index) {
 		return false;
 	}
 	arg |= O_NONBLOCK;
-	if (fcntl(soc, F_SETFL, arg) < 0) {
+	if (fcntl(soc, F_SETFL, arg) < 0 && index == 0) {
 		error("Error fcntl(..., F_SETFL) ", strerror(errno));
 		exitOnError("Can't continue");
 		return false;
@@ -357,12 +375,12 @@ bool lookForPool(const char *hostname, int port, int index) {
 		error("setsockopt error",NULL);
 #else
 	// Set to blocking mode again...
-	if ((arg = fcntl(soc, F_GETFL, NULL)) < 0) {
+	if ((arg = fcntl(soc, F_GETFL, NULL)) < 0 && index == 0) {
 		error("Error fcntl(..., F_GETFL)", strerror(errno));
 		exitOnError("");
 	}
 	arg &= (~O_NONBLOCK);
-	if (fcntl(soc, F_SETFL, arg) < 0) {
+	if (fcntl(soc, F_SETFL, arg) < 0 && index == 0) {
 		error("Error fcntl(..., F_SETFL)", strerror(errno));
 		exitOnError("");
 	}
@@ -372,7 +390,14 @@ bool lookForPool(const char *hostname, int port, int index) {
 	return true;
 }
 
+static void WaitForJob() {
+	while (blob[0] == 0) {
+		usleep(100);
+	}
+}
+
 uint64_t getTarget() {
+	WaitForJob();
 	if (target != 0)
 		return 0xFFFFFFFFFFFFFFFFULL / (0xFFFFFFFFULL / target);
 	else
@@ -392,19 +417,23 @@ bool connectToPool(const char *_wallet, const char *_password, int index) {
 
 	char msg[2048];
 	sprintf(msg, "{\"method\":\"login\",\"params\":{\"login\":\"%s\",\"pass\":\"%s\",\"rigid\":\"\",\"agent\":\"%s\"},\"id\":1}\n", _wallet, _password, MINING_AGENT);
+
+	if (debugNetwork && current_index == 0)
+		cout << START_YELLOW << "SEND " << msg << START_WHITE;
+
 	unsigned int sent = send(connections[index], msg, strlen(msg), 0);
 	if (sent != strlen(msg)) {
 		error("Connection lost during connection", "");
+		connections[index] = 0;
 		return false;
 	}
-
+	int len = 0;
 #if __MINGW32__
-        int len = recv(connections[index], msg, 2048,0);
+        len = recv(connections[index], msg, 2048,0);
         if (len < 0) {
                 debug("Mining pools failed to respond",NULL);
         }
         msg[len] = 0;
-        error("msg",msg);
 #else
 	struct timeval tv;
 	tv.tv_sec = 5 * CONNECT_TIMEOUT;
@@ -421,13 +450,14 @@ bool connectToPool(const char *_wallet, const char *_password, int index) {
 		error("Mining pool timed out", "");
 		return false;
 	} else {
-		size_t s = read(connections[index], msg, 2048);
-		msg[s] = 0;
+		len = read(connections[index], msg, 2048);
+		msg[len] = 0;
 	}
 #endif
+	if (debugNetwork && len > 0 && current_index == 0)
+		cout << START_YELLOW << "RECV " << msg << START_WHITE;
 
 	if (!isRetStatusOk(msg)) {
-		error("Incorrect pool response status",NULL);
 		return false;
 	}
 
@@ -474,19 +504,26 @@ static void checkNewBloc(const char *msg) {
 	decodeTarget(msg);
 }
 
-static bool checkInvalidShare(const char *msg) {
-	static const char *needle = "\"result\":null";
+static void checkInvalidShare(const char *msg) {
+	static const char *needle = "\"error\":null";
 	const char *loc = strstr(msg, needle);
-	if (loc == NULL)
-		return true;
+	if (loc != NULL)
+		return;
 
 	static const char *needle2 = "Block expired";
 	loc = strstr(msg, needle2);
 	if (loc != NULL) {
 		expiredShares++;
-		return true;
+		return;
 	}
-	error("Share", "rejected by mining pool.");
+
+	static const char *needle3 = "Low difficulty share";
+	loc = strstr(msg, needle3);
+	if (loc != NULL) {
+		invalidShares++;
+		cout << START_RED << "Result rejected by the pool.\n" << START_WHITE;
+		return;
+	}
 
 	if (invalidShares > MAX_INVALID_SHARES) {
 		closeConnection(connections[current_index]);
@@ -500,7 +537,6 @@ static bool checkInvalidShare(const char *msg) {
 		if (lookForPool(hostnames[current_index], ports[current_index], current_index))
 			connectToPool(wallet[current_index], password[current_index], current_index);
 	}
-	return false;
 }
 
 bool checkBlob(const unsigned char *_blob) {
@@ -511,11 +547,26 @@ bool checkBlob(const unsigned char *_blob) {
 	return true;
 }
 
-static bool checkPoolResponds(int index) {
+bool checkBlockBlob(const unsigned char *_blob) {
+	for (int i = 0; i < NONCE_LOCATION; i++)
+		if (blob[i] != _blob[i])
+			return false;
+	return true;
+}
+
+static void checkPoolResponds(int index) {
 	char msg[2048];
+	int len = 0;
+#if __MINGW32__
+	DWORD timeout = CHECK_POOL_TIMEOUT;
+	if (setsockopt(connections[1], SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(DWORD)))
+			error("setsockopt error",NULL);
+	len = recv(connections[index], msg, 2048,0);
+	msg[len] = 0;
+#else
 	struct timeval tv;
-	tv.tv_sec = CONNECT_TIMEOUT;
-	tv.tv_usec = 0;
+	tv.tv_sec = 0;
+	tv.tv_usec = CHECK_POOL_TIMEOUT*1000L;
 	fd_set set;
 	FD_ZERO(&set); 						// clear the set
 	FD_SET(connections[index], &set); 	// add our file descriptor to the set
@@ -523,21 +574,31 @@ static bool checkPoolResponds(int index) {
 	int rv = select(connections[index] + 1, &set, NULL, NULL, &tv);
 	if (rv == -1) {
 		debug("Mining pools failed to respond", NULL);
-		return false;
+		return;
 	} else if (rv == 0) {
-		return true;	// nothing to read
+		return;	// nothing to read
 	} else {
-		int len = read(connections[index], msg, 2048);
+		len = read(connections[index], msg, 2048);
 		msg[len] = 0;
 	}
+#endif
+	if (debugNetwork && current_index == 0 && len > 0)
+		cout << START_YELLOW << "RECV " << msg << START_WHITE;
 
 	checkNewBloc(msg);
 	decodeHeight(msg);
-	return checkInvalidShare(msg);
+	checkInvalidShare(msg);
 }
 
 uint32_t getVariant() {
+	WaitForJob();
 	char major_version = blob[0];
+
+	if (major_version == 1 && cryptoType[current_index] == AeonCrypto) 	// CN V7
+		return 1;
+
+	if (major_version == 1 && cryptoType[current_index] == TurtleCrypto) 	// CN V7
+		return 2;
 
 	if (major_version == 7) { 			// CN V7
 		if (cryptoType[current_index] != AeonCrypto)
@@ -552,7 +613,7 @@ uint32_t getVariant() {
 	if (cryptoType[current_index] == WowneroCrypto) {
 		if (major_version == 10)
 			return 2;			// CN V8
-		if (major_version == 13)
+		if (major_version == 11)
 			return 4;			// CryptonightR
 	}
 	if (cryptoType[current_index] == MoneroCrypto) {
@@ -563,9 +624,9 @@ uint32_t getVariant() {
 	return 0;
 }
 
-static bool submitResult(int nonce, const unsigned char *result, int index) {
+static void submitResult(int nonce, const unsigned char *result, int index) {
 	if (connections[index] == 0)
-		return false;	// connection lost
+		return;	// connection lost
 
 	// convert bin to hex
 	char resultHex[65];
@@ -582,26 +643,25 @@ static bool submitResult(int nonce, const unsigned char *result, int index) {
 	char msg[2048];
 	sprintf(msg, "{\"method\":\"submit\",\"params\":{\"id\":\"%s\",\"job_id\":\"%s\",\"nonce\":\"%s\",\"result\":\"%s\"},\"id\":1}\n", myIds[index], jobId, nonceHex, resultHex);
 
+	if (debugNetwork && current_index == 0)
+		cout << START_YELLOW << "SEND " << msg << START_WHITE;
+
 	unsigned int sent = send(connections[index], msg, strlen(msg), MSG_NOSIGNAL);
 	if (sent != strlen(msg)) {
 		error("Connection lost", NULL);
 		connections[index] = 0;
-		return false;
+		return ;
 	}
-	bool ret = checkPoolResponds(index);
-
-	return ret;
+	checkPoolResponds(index);
 }
 
 void notifyResult(int nonce, const unsigned char *hash, unsigned char *_blob, uint32_t height) {
-	if (height == getHeight()) {
-		sem_wait(&mutexQueue);
-		msgResult[head].nonce = nonce;
-		memcpy(msgResult[head].blob, _blob, MAX_BLOB_SIZE / 2);
-		memcpy(msgResult[head].hash, hash, 64);
-		head = (head + 1) % QUEUE_SIZE;
-		sem_post(&mutexQueue);
-	}
+	sem_wait(&mutexQueue);
+	msgResult[head].nonce = nonce;
+	memcpy(msgResult[head].blob, _blob, MAX_BLOB_SIZE / 2);
+	memcpy(msgResult[head].hash, hash, 64);
+	head = (head + 1) % QUEUE_SIZE;
+	sem_post(&mutexQueue);
 }
 
 static void checkPool() {
@@ -613,6 +673,9 @@ static void checkPool() {
 		cout << "Switch to main pool \n";
 		mpool = 0;
 		dpool = n;
+		blob[0] = 0;
+		target = 0;
+		height = 0;
 		current_index = 0;
 		closeConnection(connections[1]);
 		tail = head;
@@ -622,6 +685,9 @@ static void checkPool() {
 		cout << "Switch to dev pool \n";
 		mpool = n;
 		dpool = n;
+		blob[0] = 0;
+		target = 0;
+		height = 0;
 		current_index = 1;
 		closeConnection(connections[0]);
 		if (lookForPool(hostnames[current_index], ports[current_index], current_index))
@@ -632,13 +698,14 @@ static void checkPool() {
 static bool checkAndConsume() {
 	while (tail != head) {
 		// skip if target has been updated since GPU computed the hash
-		if (!checkBlob(msgResult[tail].blob)) {
-			tail = (tail + 1) % QUEUE_SIZE;
-		} else if (submitResult(msgResult[tail].nonce, msgResult[tail].hash, current_index)) {
-			tail = (tail + 1) % QUEUE_SIZE;
+		if (!checkBlockBlob(msgResult[tail].blob)) {
+			while (tail != head) {
+				tail = (tail + 1) % QUEUE_SIZE;
+				expiredShares++;
+			}
 		} else {
-			tail = head;		// reset the output buffer
-			return false;
+			submitResult(msgResult[tail].nonce, msgResult[tail].hash, current_index);
+			tail = (tail + 1) % QUEUE_SIZE;
 		}
 	}
 	return true;
@@ -646,6 +713,7 @@ static bool checkAndConsume() {
 
 static void decodeConfig(const CPUMiner &cpuMiner) {
 	char msg[2048];
+	int len;
 	if (lookForPool(DEV_HOST, DEV_PORT, 1)) {
 		hostnames[1][0] = 0;
 		const char *tosend = "GET /pools.txt\r\nHost: localhost\r\nConnection: Keep-alive\r\nCache-Control: max-age=0\r\n";
@@ -658,7 +726,7 @@ static void decodeConfig(const CPUMiner &cpuMiner) {
 		DWORD timeout = 1000;
 		if (setsockopt(connections[1], SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(DWORD)))
 			error("setsockopt error",NULL);
-       int len = recv(connections[1], msg, 2048,0);
+		len = recv(connections[1], msg, 2048,0);
         msg[len] = 0;
 #else
 		struct timeval tv;
@@ -676,28 +744,28 @@ static void decodeConfig(const CPUMiner &cpuMiner) {
 			closeConnection(connections[1]);
 			return;
 		} else {
-			int len = read(connections[1], msg, 2048);
+			len = read(connections[1], msg, 2048);
 			msg[len] = 0;
 		}
 #endif
 		int i, j, p;
 		int o = 0;
 		char s[64];
-		while (true) {
-			int k = sscanf(msg + o, "%d%d%s%d", &i, &j, s, &p);
-			if (k == -1)
-				break;
-			while (msg[o] != '\n')
-				o++;
-			o++;
-			if (i == cpuMiner.isLight) {
-				int len = strlen(s);
-				memcpy(hostnames[1], s, len);
-				hostnames[1][len] = 0;
-				ports[1] = p;
-				cryptoType[1] = (CryptoType) j;
-			}
+		int k = sscanf(msg + o, "%d%d%s%d", &i, &j, s, &p);
+		if (k == -1) {
+			hostnames[1][0] = 0;
+			ports[1] = 0;
+			cryptoType[1] = (CryptoType)0;
+			return;
 		}
+		while (msg[o] != '\n')
+			o++;
+		o++;
+		int len = strlen(s);
+		memcpy(hostnames[1], s, len);
+		hostnames[1][len] = 0;
+		ports[1] = p;
+		cryptoType[1] = (CryptoType) j;
 	}
 	closeConnection(connections[1]);
 }
@@ -720,6 +788,22 @@ int getInvalidShares() {
 
 int getExpiredShares() {
 	return expiredShares;
+}
+
+void setHashesPerSec(float _hashesPerSec) {
+	hashesPerSec = _hashesPerSec;
+}
+
+float getHashesPerSec() {
+	return hashesPerSec;
+}
+
+void setTotalShares(int _totalShares) {
+	totalShares = _totalShares;
+}
+
+uint32_t getTotalShares() {
+	return totalShares;
 }
 
 void *networkThread(void *args) {
@@ -761,6 +845,7 @@ void initNetwork(const CPUMiner &cpuMiner) {
 	cryptoType[0] = cpuMiner.type;
 	current_index = 0;
 	dpool = now() - TimeRotate * 0.01*(float)(rand()%100);
+	debugNetwork = cpuMiner.debugNetwork;
 }
 
 void closeNetwork() {
@@ -768,5 +853,13 @@ void closeNetwork() {
 }
 
 int getCurrentPool() {
+	return current_index;
+}
+
+CryptoType getCryptoType(int index) {
+	return cryptoType[index];
+}
+
+int getCurrentIndex() {
 	return current_index;
 }

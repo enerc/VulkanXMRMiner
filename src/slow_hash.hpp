@@ -26,8 +26,8 @@ union cn_slow_hash_state {
 typedef struct CPUMiner {
 	uint8_t *hp_state;
 	int variant;
-	bool hp_allocated;
-	bool isLight;
+	int  memFactor;
+	bool debugNetwork;
 	CryptoType type;
 	cn_slow_hash_state shs;
 } CPUMiner;
@@ -35,5 +35,5 @@ typedef struct CPUMiner {
 
 bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuId, uint64_t height);
 int v4_random_math_init(struct V4_Instruction* code, const uint64_t height);
-
+void destroyCPUScratchPad(CPUMiner &);
 #endif /* SLOW_HASH_HPP_ */

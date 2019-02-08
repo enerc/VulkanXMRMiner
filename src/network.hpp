@@ -2,6 +2,7 @@
 #define NETWORK_HPP_
 
 #define CONNECT_TIMEOUT 3
+#define CHECK_POOL_TIMEOUT 100L
 #define MINING_AGENT	"vulkan XMR miner"
 #define DEV_HOST		"dev.vulkanmines.net"
 #define DEV_PORT		8081
@@ -26,5 +27,11 @@ uint32_t getVariant();
 int getInvalidShares();
 int getExpiredShares();
 int getCurrentPool();
+CryptoType getCryptoType(int index);
+int getCurrentIndex();
+void setHashesPerSec(float hashesPerSec);
+float getHashesPerSec();
+void setTotalShares(int totalShares);
+uint32_t getTotalShares();
 
 #endif /* NETWORK_HPP_ */
