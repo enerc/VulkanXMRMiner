@@ -411,7 +411,8 @@ select4:
 			istringstream stream( input );
 			stream >> config.consoleRefreshRate;
 		}
-	}
+	} else
+		config.consoleRefreshRate = DEFAULT_CONSOLE_REFRESH_RATE;
 
 	int nbDevices = vulkanInit();
 
