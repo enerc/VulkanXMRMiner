@@ -1,8 +1,10 @@
 # VulkanXMRMiner
 
 This program is a Vulkan SPIR-V based miner for the Cryptonight familly:<br/><br/>
-<img src="https://monero.org/wp-content/uploads/2015/03/logo-big.jpg" height="67" width="250" >&nbsp;&nbsp;&nbsp;<img src="http://wownero.org/images/wow.png" height="40" width="160" >&nbsp;&nbsp;&nbsp;<img src="https://www.aeon.cash/branding/aeon_logo_32x32.png" height="60" width="60" >
-<img src="https://raw.githubusercontent.com/turtlecoin/brand/master/logo/web/symbol/turtlecoin_symbol_color.png" height="80" width="80" >
+<img src="https://monero.org/wp-content/uploads/2015/03/logo-big.jpg" height="67" width="250" >&nbsp;&nbsp;&nbsp;
+<img src="https://www.aeon.cash/branding/aeon_logo_32x32.png" height="60" width="60" >
+<img src="http://wownero.org/images/wow.png" height="40" width="160" >
+<img src="https://raw.githubusercontent.com/turtlecoin/brand/master/logo/web/symbol/turtlecoin_symbol_color.png" height="70" width="70" >
 <img src="https://avatars3.githubusercontent.com/u/42850689?s=60&v=4" height="50" width="50" ><br/><br/>
 This miner is based on Vulkan and SPIR-V technology (<b>not</b> OpenCL):<br/>
 <img src="https://www.khronos.org/assets/uploads/apis/vulkan2.svg" height="67" width="250" ><img src="https://www.khronos.org/assets/uploads/ceimg/made/assets/uploads/apis/SPIR_100px_June16_150_75.png" height="67" width="250" >
@@ -13,8 +15,8 @@ What's Vulkan:<br/>
 This program should work on any Vulkan 1.0 compatible device: AMD, Intel, Nvidia.
 
 # Download and run
-You can get Windows binaries here:  <a href="https://github.com/enerc/VulkanXMRMiner/blob/master/dist/vulkanXMRMiner.zip?raw=true">Download as zip file</a> <br />
-You can get Linux binaries here:  <a href="https://github.com/enerc/VulkanXMRMiner/blob/master/dist/vulkanXMRMiner.tgz?raw=true">Download binaries as compressed tar file</a> <br />
+You can get Windows binaries here:  <a href="https://github.com/enerc/VulkanXMRMiner/raw/master/dist/vulkanXMRMiner-0.2.zip">Download as zip file</a> <br />
+You can get Linux binaries here:  <a href="https://github.com/enerc/VulkanXMRMiner/raw/master/dist/VulkanXMRMiner-0.2.tgz">Download binaries as compressed tar file</a> <br />
 
 Extract the zip file, and run miner.exe / miner.<br/>
 
@@ -43,7 +45,8 @@ In /etc/vulkan/icd.d/ there should be a file with something like:
 
 # Windows TDR
 When mining under Windows and using optimized settings, the driver might reset and the miner will stop with the error "Device Lost". This is caused by the Timeout Detection and Recovery feature triggered when a kernel works for more than 2 seconds.<br/>
-Either change the TdrDelay key in HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\GraphicsDrivers or create a TdrLevel entry with value 0 (TdrLevelOff).
+Either change the TdrDelay key in HKEY_LOCAL_MACHINE\System\CurrentControlSet\Control\GraphicsDrivers or create a TdrLevel entry with value 0 (TdrLevelOff).<br/>
+The file TdrLevel.reg will change the Windows registry to proper settings.
 
 # Configuration
 When entering the miner, a setup menu will be shown if there are no config.json file there.<br />
@@ -56,7 +59,7 @@ Number of CU x Factor x 2 Mb (1Mb for Cryptonight light)<br/>
 - So for example a 56 CU with a factor 64 on Monero will use:<br/>
 56 x 64 x 2 = 7168 Mb of Video RAM. <br/>
 - debug_network allows to print the network exchanges between the miner and the pool
-- console_listen_port: 0 to disable JSON/Graphic or port Number
+- console_listen_port: 0 to disable JSON/Graphic or port number
 - console_refresh_rate: 30s will give a hashrate window of 12 hours in the graphs.
 
 # Build
@@ -79,32 +82,30 @@ Monitoring can be accessed through localhost:"the port in console_listen_port co
 For monitoring in GPU farms, there is also a json url http://host:port/status.json that returns a json text reporting the health of the GPU cards:<br/>
 <img src="https://raw.githubusercontent.com/enerc/VulkanXMRMiner/master/img/json_status.png" height="107" width="89" >
 
-# Performance
+# Benchmarks
 ## on CN V2 (Variant 2)
 <span style="font-family: monospace;">
 Vega56 1500/1075&nbsp;: 1800 H/s on Windows 10 (200 W)<br />
-Vega56 1500/945&nbsp;&nbsp;: 1635 H/s on Windows 10<br />
-Vega56 PowerSave&nbsp;: 1595 H/s on Windows 10<br />
 Vega56 1500/945&nbsp;&nbsp;: 1625 H/s on Linux Rocm 2.0 (200 W)<br />
 Vega56 1200/800&nbsp;&nbsp;: 1460 H/s on Linux Rocm 2.0 (100 W)<br />
-R9 Fury 1050/500&nbsp;: 835 H/s on Windows 10<br />
-R9 Fury 1050/500&nbsp;: 835 H/s on Linux ROCM 2.0 (185 W)<br />
-R9 Fury 874/500&nbsp;&nbsp;: 700 H/s on Linux ROCM 2.0 (100 W)<br/>
+R9 Fury 1050/500&nbsp;: 835 H/s on Windows & Linux<br />
 RX560 1000/1850&nbsp;&nbsp;: 410 H/s on Linux amdgpu-pro (25 W)<br />
 RX550 1000/1800&nbsp;&nbsp;: 330 H/s on Linux amdgpu-pro (16 W)<br />
 </span>
 
 ## on CN/R (CryptonightR - Variant 4)
 <span style="font-family: monospace;">
-Vega56 1500/1075&nbsp;: 1805 H/s on Windows 10 (200 W)<br />
-R9 Fury 1050/500&nbsp;: 833 H/s on Windows 10<br />
-R9 Fury 874/500&nbsp;&nbsp;: 700 H/s on Linux ROCM 2.0 (100 W)<br/>
+Vega56 1500/1075&nbsp;: 1800 H/s on Windows 10<br />
 </span>
 
 ## on CN Light V7 (Aeon)
 <span style="font-family: monospace;">
-Vega56 1500/1075&nbsp;: 3900 H/s on Windows 10 (200 W)<br />
-Vega56 PowerSave&nbsp;: 3526 H/s on Windows 10<br />
+Vega56 1500/1075&nbsp;: 3970 H/s on Windows 10<br />
+</span>
+
+## on TurtleCoin
+<span style="font-family: monospace;">
+Vega56 1500/1075&nbsp;: 14 070 H/s on Windows 10<br />
 </span>
 
 # Dev fee
