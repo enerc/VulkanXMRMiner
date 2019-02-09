@@ -8,6 +8,7 @@
 #define MAX_PASSWORD_SIZE 256
 #define CONFIG_FILENAME "config.json"
 #define MAX_GPUS		32
+#define DEFAULT_CONSOLE_REFRESH_RATE	30
 
 enum CryptoType {
 	MoneroCrypto,
@@ -35,6 +36,7 @@ typedef struct Config {
 	int 	nbGpus;
 	bool  debugNetwork;
 	int   consoleListenPort;
+	int   consoleRefreshRate;
 	struct GpuConfig gpus[MAX_GPUS];
 } Config;
 

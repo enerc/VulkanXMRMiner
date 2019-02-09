@@ -135,6 +135,7 @@ static string createJsonFromConfig() {
 	s << " \"pool_password\" : \"" << config.poolPassword << "\",\n";
 	s << " \"debug_network\" : \"" << (config.debugNetwork? "true" : "false") << "\",\n";
 	s << " \"console_listen_port\" : \"" << config.consoleListenPort << "\",\n";
+	s << " \"console_refresh_rate\" : \"" << config.consoleRefreshRate  << "\",\n";
 
 	s << " \"cards\" : [\n";
 	for (int i=0; i < config.nbGpus; i++) {
@@ -208,6 +209,13 @@ static void decodeConfig(const char *conf)  {
 		config.consoleListenPort = atoi(tmp);
 	} else
 		config.consoleListenPort = 0;
+
+	loc = getJSONEntryLocation(conf,len,"console_refresh_rate",false);
+	if (loc != nullptr) {
+		fillStringProperty(tmp,128,loc);
+		config.consoleRefreshRate = atoi(tmp);
+	} else
+		config.consoleRefreshRate = DEFAULT_CONSOLE_REFRESH_RATE;
 
 	loc = getJSONEntryLocation(conf,len,"wallet_address",true);
 	fillStringProperty(config.address,MAX_ADRESS_SIZE,loc);
@@ -385,13 +393,24 @@ select4:
     	config.poolPassword[1] = 0;
     }
 
-select5:
    	cout << "Monitoring listen port (0 if no JSON/graphic console): ";
 	getline(cin, input );
-	if ( input.empty() ) goto select5;
-	else {
+	if ( input.empty() ) {
+		config.consoleListenPort = 0;
+	} else {
 		istringstream stream( input );
 		stream >> config.consoleListenPort;
+	}
+
+	if (config.consoleListenPort > 0) {
+	   	cout << "Console refresh rate (default 30s): ";
+		getline(cin, input );
+		if ( input.empty() ) {
+			config.consoleRefreshRate = DEFAULT_CONSOLE_REFRESH_RATE;
+		} else {
+			istringstream stream( input );
+			stream >> config.consoleRefreshRate;
+		}
 	}
 
 	int nbDevices = vulkanInit();

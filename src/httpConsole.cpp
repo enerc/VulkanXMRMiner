@@ -2615,8 +2615,8 @@ static void initServer(int portno) {
 	}
 }
 
-void writeJsonContent(stringstream &w) {
-	w << "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n\r\n";
+void writeJsonContent(stringstream &f) {
+	stringstream w;
 	w.unsetf(std::ios::floatfield);
 	w << fixed;
 	w.precision(1);
@@ -2628,16 +2628,21 @@ void writeJsonContent(stringstream &w) {
 	w << "\"expiredShares\": " << getExpiredShares() << ",";
 	w << "\"cards\": [";
 	for (int i = 0; i <= nbGpus; i++) {
+		int k0 = (HASH_HISTORY+hasHistoryTail[i]-1)%HASH_HISTORY;
 		w << "{";
+		w << "\"hashrate\": " << hashRateHistory[i][k0] << ",";
 		w << "\"goodHashes\": " << getGoodHash(i) << ",";
 		w << "\"badHashes\": " << getBadHash(i) << "}";
 		if (i < nbGpus) w << ",";
 	}
 	w << "]}";
+
+	f << "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: "<< w.str().size() << "\r\n\r\n";
+	f << w.str();
 }
 
-void writeHtmlContent(stringstream &w) {
-	w << "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n";
+void writeHtmlContent(stringstream &f) {
+	stringstream w;
 	w << textHeader;
 	w.unsetf(std::ios::floatfield);
 	w << fixed;
@@ -2647,7 +2652,7 @@ void writeHtmlContent(stringstream &w) {
 	for (int i = 0; i <= nbGpus; i++) {
 		int inc = 100* (((maxHash[i]/4)+99)/100);
 		if (inc == 0) inc = 10;
-		w << "<svg width=\"100%\" height=\"400\" viewBox=\"0 0 2000 400\">";
+		w << "<svg width=\"90%\" height=\"400\" viewBox=\"0 0 2000 400\" style=\"margin-left:5%\" >";
 		w << "<rect width=\"2000\" height=\"400\" rx=\"15\" ry=\"15\" style=\"fill:rgb(40,40,40);stroke-width:3;stroke:rgb(51,100,150)\" />";
 		w << "<text x=\"40\" y=\"45\" style=\"font-size:32px;fill: #3399ff; stroke: #0000c0\">#" << i << ":";
 		w << gpuNames[i];
@@ -2730,6 +2735,9 @@ void writeHtmlContent(stringstream &w) {
 	w << svgEvil;
 	w << svgExpired;
 	w << textEnd;
+
+	f << "HTTP/1.0 200 OK\r\nContent-Type: text/html\r\nContent-Length: "<< w.str().size() << "\r\n\r\n";
+	f << w.str();
 }
 
 void stopConsoleBG() {
@@ -2761,8 +2769,8 @@ void *consoleThread(void *args) {
 		// If connection is established then start communicating
 		char buffer[4096];
 		memset(buffer, 0, 4096);
-		size_t n = read(newsockfd, (void*) buffer, 4096);
 
+		int n = recv(newsockfd, buffer, 4096,0);
 		if (n < 0) {
 			perror("ERROR reading from socket");
 			exit(1);
@@ -2776,7 +2784,13 @@ void *consoleThread(void *args) {
 			writeHtmlContent(w);
 
 		// Write a response to the client
-		n = write(newsockfd, w.str().c_str(), w.str().size());
+		size_t count =  0;
+		while (count  < w.str().size()) {
+			//n = write(newsockfd, w.str().c_str()+count, w.str().size());
+			n = send(newsockfd, w.str().c_str()+count, w.str().size()-count,0);
+			if (n== -1) break;
+			count += n;
+		}
 
 		if (n < 0) {
 			error("ERROR writing to socket", NULL);

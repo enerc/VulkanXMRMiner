@@ -421,7 +421,8 @@ VkPipeline loadShader(VkDevice vkDevice, VkPipelineLayout pipelineLayout,VkShade
 	if (fp == NULL) {
 		char msg[2048];
 		sprintf(msg,"SPIR-V program %s not found\n",file_name);
-		exitOnError(msg);
+		error(msg,NULL);
+		return 0;
 	}
 	fseek(fp, 0, SEEK_END);
 	shader_size = (size_t) (ftell(fp) * sizeof(char));

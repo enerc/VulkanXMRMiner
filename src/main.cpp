@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
 		pthread_create(&threads[i], NULL, MinerThread, &miners[i]);
 	}
 	pthread_t consoleThread = startConsoleBG(config.consoleListenPort);
-	setFrequency(30);
+	setFrequency(config.consoleRefreshRate);
 
 	cout << "Mining started.... (Press q to stop)\n";
 	cout << "[Time] 'Total H/s' 'Good shares'/'Invalid shares'/'Expired shares' [GPU] H/s 'good hashes'/'bad hashes' \n";
@@ -174,7 +174,7 @@ int main(int argc, char **argv) {
 			if (stucked[i] > 30)
 				mHashrate[i] = 0;			//  stucked
 		}
-		if (loop == 30) {
+		if (loop == config.consoleRefreshRate) {
 			cout << START_GREEN;
 			printDate();
 			cout.unsetf(std::ios::floatfield);

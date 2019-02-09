@@ -400,6 +400,18 @@ void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &
 	gpu_scratchpadsBuffer1 = createBuffer(vkDevice, computeQueueFamillyIndex, gpuLocalMemory, local_memory_size, 0);
 	VkPipelineLayout pipelineLayout = bindBuffer(vkDevice, descriptorSet, descriptorPool, descriptorSetLayout, gpu_scratchpadsBuffer1);
 	VkPipeline pipeline_cn8_1 = loadShader(vkDevice, pipelineLayout,shader_module, "spirv/cn8.spv");
+	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO, 0, 0, 0, 0, 1, &vkCommandBuffer, 0, 0 };
+
+	// Warm up to trigger frequency changes
+	for (int i=0; i< 10; i++) {
+		CHECK_RESULT(vkBeginCommandBuffer(vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
+		vkCmdBindPipeline(vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_cn8_1);
+		vkCmdBindDescriptorSets(vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, 0);
+		vkCmdDispatch(vkCommandBuffer, i, 1, 1);
+		CHECK_RESULT(vkEndCommandBuffer(vkCommandBuffer), "vkEndCommandBuffer");
+		CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE), "vkQueueSubmit");
+		CHECK_RESULT(vkQueueWaitIdle(queue),"vkQueueWaitIdle");
+	}
 
 	// Check with local_size = 8
 	int i=0;
