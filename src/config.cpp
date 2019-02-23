@@ -369,7 +369,8 @@ select3:
         stream >> config.poolPort;
     }
 
-	if (!lookForPool(config.poolAddress,config.poolPort,1)) {
+    registerPool(config.poolAddress,config.poolPort,"","",1);
+	if (!lookForPool(1)) {
 		cout << "Can't connect to the pool at " << config.poolAddress << ":" << config.poolPort << "\n";
 		goto select2;
 	}

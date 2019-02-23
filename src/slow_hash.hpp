@@ -34,6 +34,6 @@ typedef struct CPUMiner {
 
 
 bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuId, uint64_t height);
-int v4_random_math_init(struct V4_Instruction* code, const uint64_t height);
+int v4_random_math_init(struct V4_Instruction* code, const uint64_t height,CryptoType cryptoType);
 void destroyCPUScratchPad(CPUMiner &);
 #endif /* SLOW_HASH_HPP_ */

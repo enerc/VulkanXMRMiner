@@ -111,7 +111,7 @@ static void xor64(uint64_t *a, const uint64_t b) {
 		_a = _mm_load_si128(R128(a)); \
 
 #define VARIANT2_SHUFFLE_ADD_SSE2(base_ptr, offset) \
-		do if (cpuMiner.variant >= 2) \
+		if (cpuMiner.variant  >= 2 && cpuMiner.type != MoneroCrypto) \
 		{ \
 			const __m128i chunk1 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ 0x10))); \
 			const __m128i chunk2 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ 0x20))); \
@@ -119,7 +119,21 @@ static void xor64(uint64_t *a, const uint64_t b) {
 			_mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x10)), _mm_add_epi64(chunk3, _b1)); \
 			_mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x20)), _mm_add_epi64(chunk1, _b)); \
 			_mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x30)), _mm_add_epi64(chunk2, _a)); \
-		} while (0)
+		} \
+		if (cpuMiner.variant  >= 2 && cpuMiner.type == MoneroCrypto) { \
+			 __m128i chunk1 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ 0x10))); \
+			 const __m128i chunk2 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ 0x20))); \
+			 const __m128i chunk3 = _mm_load_si128((__m128i *)((base_ptr) + ((offset) ^ 0x30))); \
+			 _mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x10)), _mm_add_epi64(chunk3, _b1)); \
+			 _mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x20)), _mm_add_epi64(chunk1, _b)); \
+			 _mm_store_si128((__m128i *)((base_ptr) + ((offset) ^ 0x30)), _mm_add_epi64(chunk2, _a)); \
+			 if (cpuMiner.variant >= 4) \
+			 { \
+			      chunk1 = _mm_xor_si128(chunk1, chunk2); \
+			      _c = _mm_xor_si128(_c, chunk3); \
+			      _c = _mm_xor_si128(_c, chunk1); \
+			} \
+		}
 
 #define VARIANT2_INTEGER_MATH_DIVISION_STEP(b, ptr) \
 		((uint64_t*)(b))[0] ^= division_result ^ (sqrt_result << 32); \
@@ -156,7 +170,8 @@ static void xor64(uint64_t *a, const uint64_t b) {
 		};
 
 #define VARIANT2_2() \
-		if (cpuMiner.variant >= 2) \
+		if (cpuMiner.variant == 4 && cpuMiner.type == MoneroCrypto) {\
+		} else if (cpuMiner.variant >= 2) \
 		{ \
 			*U64(php_state + (j ^ 0x10)) ^= hi; \
 			*(U64(php_state + (j ^ 0x10)) + 1) ^= lo; \
@@ -3031,17 +3046,16 @@ static void hash_extra_skein(const void *data, size_t length, char *hash) {
 	assert(r);
 }
 
-static void check_data(size_t* data_index, const size_t bytes_needed, char* data, const size_t data_size) {
+static void check_data(size_t* data_index, const size_t bytes_needed, int8_t* data, const size_t data_size) {
 	if (*data_index + bytes_needed > data_size)
 	{
-		hash_extra_blake(data, data_size, data);
+		hash_extra_blake(data, data_size, (char*)data);
 		*data_index = 0;
 	}
 }
 
 // Generates as many random math operations as possible with given latency and ALU restrictions
-int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
-{
+int v4_random_math_init(struct V4_Instruction* code, const uint64_t height, CryptoType cryptoType ) {
 	// MUL is 3 cycles, 3-way addition and rotations are 2 cycles, SUB/XOR are 1 cycle
 	// These latencies match real-life instruction latencies for Intel CPUs starting from Sandy Bridge and up to Skylake/Coffee lake
 	//
@@ -3049,7 +3063,7 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 	// Surprisingly, Intel Nehalem also has 1-cycle ROR/ROL, so it'll also be faster than Intel Sandy Bridge and newer processors
 	// AMD Bulldozer has 4 cycles latency for MUL (slower than Intel) and 1 cycle for ROR/ROL (faster than Intel), so average performance will be the same
 	// Source: https://www.agner.org/optimize/instruction_tables.pdf
-	const int op_latency[V4_INSTRUCTION_COUNT] = {  3, 2, 1, 2, 2, 1  };
+	const int op_latency[V4_INSTRUCTION_COUNT] = { 3, 2, 1, 2, 2, 1 };
 
 	// Instruction latencies for theoretical ASIC implementation
 	const int asic_op_latency[V4_INSTRUCTION_COUNT] = { 3, 1, 1, 1, 1, 1 };
@@ -3057,25 +3071,37 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 	// Available ALUs for each instruction
 	const int op_ALUs[V4_INSTRUCTION_COUNT] = { ALU_COUNT_MUL, ALU_COUNT, ALU_COUNT, ALU_COUNT, ALU_COUNT, ALU_COUNT };
 
-	char data[32];
+	int8_t data[32];
 	memset(data, 0, sizeof(data));
 	*((uint64_t*)data) = height;
 
+	if (cryptoType == MoneroCrypto) {
+		data[20] =  0xda;
+	}
+
+
+	// Set data_index past the last byte in data
+	// to trigger full data update with blake hash
+	// before we start using it
 	size_t data_index = sizeof(data);
 
 	int code_size;
+
+	// There is a small chance (1.8%) that register R8 won't be used in the generated program
+	// So we keep track of it and try again if it's not used
+	bool r8_used;
 	do {
-		int latency[8];
-		int asic_latency[8];
+		int latency[9];
+		int asic_latency[9];
 
 		// Tracks previous instruction and value of the source operand for registers R0-R3 throughout code execution
 		// byte 0: current value of the destination register
 		// byte 1: instruction opcode
 		// byte 2: current value of the source register
 		//
-		// Registers R4-R7 are constant and are threatened as having the same value because when we do
+		// Registers R4-R8 are constant and are treated as having the same value because when we do
 		// the same operation twice with two constant source registers, it can be optimized into a single operation
-		int inst_data[8] = { 0, 1, 2, 3, -1, -1, -1, -1 };
+		uint32_t inst_data[9] = { 0, 1, 2, 3, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF };
 
 		bool alu_busy[TOTAL_LATENCY + 1][ALU_COUNT];
 		bool is_rotation[V4_INSTRUCTION_COUNT];
@@ -3093,61 +3119,88 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 		int num_retries = 0;
 		code_size = 0;
 
+		int total_iterations = 0;
+		r8_used = cryptoType == WowneroCrypto;
+
 		// Generate random code to achieve minimal required latency for our abstract CPU
 		// Try to get this latency for all 4 registers
-		while (((latency[0] < TOTAL_LATENCY) || (latency[1] < TOTAL_LATENCY) || (latency[2] < TOTAL_LATENCY) || (latency[3] < TOTAL_LATENCY)) && (num_retries < 64)) {
+		while (((latency[0] < TOTAL_LATENCY) || (latency[1] < TOTAL_LATENCY) || (latency[2] < TOTAL_LATENCY) || (latency[3] < TOTAL_LATENCY)) && (num_retries < 64))
+		{
+			// Fail-safe to guarantee loop termination
+			++total_iterations;
+			if (total_iterations > 256)
+				break;
+
 			check_data(&data_index, 1, data, sizeof(data));
 
-			struct V4_InstructionCompact op = ((struct V4_InstructionCompact*) data)[data_index++];
+			const uint8_t c = ((uint8_t*)data)[data_index++];
 
 			// MUL = opcodes 0-2
 			// ADD = opcode 3
 			// SUB = opcode 4
 			// ROR/ROL = opcode 5, shift direction is selected randomly
 			// XOR = opcodes 6-7
-			uint8_t opcode = (op.opcode <= 2) ? MUL : (op.opcode - 2);
-			if (op.opcode == 5) {
+			uint8_t opcode = c & ((1 << V4_OPCODE_BITS) - 1);
+			if (opcode == 5)
+			{
 				check_data(&data_index, 1, data, sizeof(data));
 				opcode = (data[data_index++] >= 0) ? ROR : ROL;
-			} else if (op.opcode >= 6) {
+			}
+			else if (opcode >= 6)
+			{
 				opcode = XOR;
 			}
+			else
+			{
+				opcode = (opcode <= 2) ? MUL : (opcode - 2);
+			}
 
-			const int a = op.dst_index;
-			int b = op.src_index;
+			uint8_t dst_index = (c >> V4_OPCODE_BITS) & ((1 << V4_DST_INDEX_BITS) - 1);
+			uint8_t src_index = (c >> (V4_OPCODE_BITS + V4_DST_INDEX_BITS)) & ((1 << V4_SRC_INDEX_BITS) - 1);
+
+			const int a = dst_index;
+			int b = src_index;
 
 			// Don't do ADD/SUB/XOR with the same register
-			if (((opcode == ADD) || (opcode == SUB) || (opcode == XOR)) && (a == b)) {
-				// a is always < 4, so we don't need to check bounds here
-				b = a + 4;
-				op.src_index = b;
+			if (((opcode == ADD) || (opcode == SUB) || (opcode == XOR)) && (a == b))
+			{
+				// Use register R8 as source instead
+				b = (cryptoType == WowneroCrypto) ? (a + 4) : 8;
+				src_index = b;
 			}
 
 			// Don't do rotation with the same destination twice because it's equal to a single rotation
-			if (is_rotation[opcode] && rotated[a]) {
+			if (is_rotation[opcode] && rotated[a])
+			{
 				continue;
 			}
 
 			// Don't do the same instruction (except MUL) with the same source value twice because all other cases can be optimized:
 			// 2xADD(a, b, C) = ADD(a, b*2, C1+C2), same for SUB and rotations
 			// 2xXOR(a, b) = NOP
-			if ((opcode != MUL) && ((inst_data[a] & 0xFFFF00) == (opcode << 8) + ((inst_data[b] & 255) << 16))) {
+			if ((opcode != MUL) && ((inst_data[a] & 0xFFFF00) == (opcode << 8) + ((inst_data[b] & 255) << 16)))
+			{
 				continue;
 			}
 
 			// Find which ALU is available (and when) for this instruction
 			int next_latency = (latency[a] > latency[b]) ? latency[a] : latency[b];
 			int alu_index = -1;
-			while (next_latency < TOTAL_LATENCY) {
-				for (int i = op_ALUs[opcode] - 1; i >= 0; --i) {
-					if (!alu_busy[next_latency][i]) {
+			while (next_latency < TOTAL_LATENCY)
+			{
+				for (int i = op_ALUs[opcode] - 1; i >= 0; --i)
+				{
+					if (!alu_busy[next_latency][i])
+					{
 						// ADD is implemented as two 1-cycle instructions on a real CPU, so do an additional availability check
-						if ((opcode == ADD) && alu_busy[next_latency + 1][i]) {
+						if ((opcode == ADD) && alu_busy[next_latency + 1][i])
+						{
 							continue;
 						}
 
 						// Rotation can only start when previous rotation is finished, so do an additional availability check
-						if (is_rotation[opcode] && (next_latency < rotate_count * op_latency[opcode])) {
+						if (is_rotation[opcode] && (next_latency < rotate_count * op_latency[opcode]))
+						{
 							continue;
 						}
 
@@ -3155,21 +3208,25 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 						break;
 					}
 				}
-				if (alu_index >= 0) {
+				if (alu_index >= 0)
+				{
 					break;
 				}
 				++next_latency;
 			}
 
 			// Don't generate instructions that leave some register unchanged for more than 7 cycles
-			if (next_latency > latency[a] + 7) {
+			if (next_latency > latency[a] + 7)
+			{
 				continue;
 			}
 
 			next_latency += op_latency[opcode];
 
-			if (next_latency <= TOTAL_LATENCY) {
-				if (is_rotation[opcode]) {
+			if (next_latency <= TOTAL_LATENCY)
+			{
+				if (is_rotation[opcode])
+				{
 					++rotate_count;
 				}
 
@@ -3185,11 +3242,16 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 				inst_data[a] = code_size + (opcode << 8) + ((inst_data[b] & 255) << 16);
 
 				code[code_size].opcode = opcode;
-				code[code_size].dst_index = op.dst_index;
-				code[code_size].src_index = op.src_index;
+				code[code_size].dst_index = dst_index;
+				code[code_size].src_index = src_index;
 				code[code_size].C = 0;
 
-				if (opcode == ADD) {
+				if (src_index == 8) {
+					r8_used = true;
+				}
+
+				if (opcode == ADD)
+				{
 					// ADD instruction is implemented as two 1-cycle instructions on a real CPU, so mark ALU as busy for the next cycle too
 					alu_busy[next_latency - op_latency[opcode] + 1][alu_index] = true;
 
@@ -3200,10 +3262,13 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 				}
 
 				++code_size;
-				if (code_size >= NUM_INSTRUCTIONS) {
+				if (code_size >= NUM_INSTRUCTIONS_MIN)
+				{
 					break;
 				}
-			} else {
+			}
+			else
+			{
 				++num_retries;
 			}
 		}
@@ -3212,14 +3277,14 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 		// We need to add a few more MUL and ROR instructions to achieve minimal required latency for ASIC
 		// Get this latency for at least 1 of the 4 registers
 		const int prev_code_size = code_size;
-		while ((asic_latency[0] < TOTAL_LATENCY) && (asic_latency[1] < TOTAL_LATENCY) && (asic_latency[2] < TOTAL_LATENCY) && (asic_latency[3] < TOTAL_LATENCY)) {
+		while ((code_size < NUM_INSTRUCTIONS_MAX) && (asic_latency[0] < TOTAL_LATENCY) && (asic_latency[1] < TOTAL_LATENCY) && (asic_latency[2] < TOTAL_LATENCY) && (asic_latency[3] < TOTAL_LATENCY))
+		{
 			int min_idx = 0;
 			int max_idx = 0;
-			for (int i = 1; i < 4; ++i) {
-				if (asic_latency[i] < asic_latency[min_idx])
-					min_idx = i;
-				if (asic_latency[i] > asic_latency[max_idx])
-					max_idx = i;
+			for (int i = 1; i < 4; ++i)
+			{
+				if (asic_latency[i] < asic_latency[min_idx]) min_idx = i;
+				if (asic_latency[i] > asic_latency[max_idx]) max_idx = i;
 			}
 
 			const uint8_t pattern[3] = { ROR, MUL, MUL };
@@ -3234,9 +3299,11 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 			++code_size;
 		}
 
-		// There is ~99.8% chance that code_size >= NUM_INSTRUCTIONS here, so second iteration is required rarely
-	} while (code_size < NUM_INSTRUCTIONS);
+	// There is ~98.15% chance that loop condition is false, so this loop will execute only 1 iteration most of the time
+	// It never does more than 4 iterations for all block heights < 10,000,000
+	}  while (!r8_used || (code_size < NUM_INSTRUCTIONS_MIN) || (code_size > NUM_INSTRUCTIONS_MAX));
 
+	// It's guaranteed that NUM_INSTRUCTIONS_MIN <= code_size <= NUM_INSTRUCTIONS_MAX here
 	// Add final instruction to stop the interpreter
 	code[code_size].opcode = RET;
 	code[code_size].dst_index = 0;
@@ -3246,8 +3313,9 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 	return code_size;
 }
 
+
 #define VARIANT4_RANDOM_MATH_INIT() \
-		v4_reg r[8]; \
+		v4_reg r[9]; \
 		struct V4_Instruction code[TOTAL_LATENCY * ALU_COUNT + 1]; \
 		if (cpuMiner.variant >= 4) \
 		{ \
@@ -3256,12 +3324,11 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 			r[1] = data[1]; \
 			r[2] = data[2]; \
 			r[3] = data[3]; \
-			v4_random_math_init(code, height); \
+			v4_random_math_init(code, height,cpuMiner.type); \
 		};
 
 #define VARIANT4_RANDOM_MATH(a, b, r, _b, _b1) \
-		if (cpuMiner.variant >= 4) \
-		{ \
+		if (cpuMiner.variant == 4 && cpuMiner.type == WowneroCrypto ) { \
 			if (sizeof(v4_reg) == sizeof(uint32_t)) \
 				U64(b)[0] ^= (r[0] + r[1]) | ((uint64_t)(r[2] + r[3]) << 32); \
 			else \
@@ -3271,7 +3338,30 @@ int v4_random_math_init(struct V4_Instruction* code, const uint64_t height)
 			r[6] = ((v4_reg*)(_b))[0]; \
 			r[7] = ((v4_reg*)(_b1))[0]; \
 			v4_random_math(code, r); \
-		};
+		} else if (cpuMiner.variant == 4 && cpuMiner.type == MoneroCrypto ) { \
+		    uint64_t t[2]; \
+		    memcpy(t, b, sizeof(uint64_t)); \
+		    if (sizeof(v4_reg) == sizeof(uint32_t)) \
+		      t[0] ^= (r[0] + r[1]) | ((uint64_t)(r[2] + r[3]) << 32); \
+		    else \
+		      t[0] ^= (r[0] + r[1]) ^ (r[2] + r[3]); \
+		    memcpy(b, t, sizeof(uint64_t)); \
+			r[4] = ((v4_reg*)(a))[0]; \
+			r[5] = ((v4_reg*)(a))[sizeof(uint64_t) / sizeof(v4_reg)]; \
+			r[6] = ((v4_reg*)(_b))[0]; \
+			r[7] = ((v4_reg*)(_b1))[0]; \
+			r[8] = ((v4_reg*)(_b1))[2]; \
+		    v4_random_math(code, r); \
+		    memcpy(t, a, sizeof(uint64_t) * 2); \
+		    if (sizeof(v4_reg) == sizeof(uint32_t)) { \
+		      t[0] ^= r[2] | ((uint64_t)(r[3]) << 32); \
+		      t[1] ^= r[0] | ((uint64_t)(r[1]) << 32); \
+		    } else { \
+		      t[0] ^= r[2] ^ r[3]; \
+		      t[1] ^= r[0] ^ r[1]; \
+		    } \
+		    memcpy(a, t, sizeof(uint64_t) * 2); \
+		}
 
 
 typedef struct {

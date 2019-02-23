@@ -11,7 +11,10 @@ enum V4_Settings {
 	TOTAL_LATENCY = 15 * 3,
 
 	// Always generate at least 60 instructions
-	NUM_INSTRUCTIONS = 60,
+	NUM_INSTRUCTIONS_MIN = 60,
+
+	// Never generate more than 70 instructions (final RET instruction doesn't count here)
+	NUM_INSTRUCTIONS_MAX = 70,
 
 	// Available ALUs for MUL
 	// Modern CPUs typically have only 1 ALU which can do multiplications
@@ -32,6 +35,11 @@ enum V4_InstructionList {
 	RET,	// finish execution
 	V4_INSTRUCTION_COUNT = RET,};
 
+enum V4_InstructionDefinition {
+	V4_OPCODE_BITS = 3,
+	V4_DST_INDEX_BITS = 2,
+	V4_SRC_INDEX_BITS = 3,
+};
 
 // V4_InstructionCompact is used to generate code from random data
 // Every random sequence of bytes is a valid code
@@ -44,12 +52,6 @@ enum V4_InstructionList {
 // - 4 constant registers initialized from loop variables
 //
 // This is why dst_index is 2 bits
-struct V4_InstructionCompact {
-	uint8_t opcode :3;
-	uint8_t dst_index :2;
-	uint8_t src_index :3;
-};
-
 struct V4_Instruction {
 	uint8_t opcode;
 	uint8_t dst_index;
@@ -57,6 +59,6 @@ struct V4_Instruction {
 	uint32_t C;
 };
 
-void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, int localSize, bool randomMath64);
+void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, int localSize, bool randomMath64, uint32_t iterations, uint32_t mask, CryptoType cryptoType );
 const char *getCryptonightRSpirVName(bool hilo, int localSize);
 #endif /* SÎRV_H_ */

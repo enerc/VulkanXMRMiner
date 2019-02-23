@@ -2559,7 +2559,9 @@ static const char*textHeader="<!DOCTYPE html>"
 "	c-0.4-2.37-1.71-3.43-4.48-3.43h-2.37V374.77z M1189.53,362.51h2.37c2.77,0,5.01-0.92,5.01-3.17c0-1.98-1.45-3.3-4.62-3.3"
 "	c-1.32,0-2.24,0.13-2.77,0.26V362.51z\"/></g></g>"
 "	<text x=\"280\" y=\"95\"  style=\"font-family: Palatino;font-size:96px;fill: #cccccc; stroke: #404040\" >XMR Miner</text>"
-"	<text x=\"870\" y=\"95\" style=\"font-family: Palatino;font-size:48px;fill: #cccccc; stroke: #404040\" >V0.2</text>"
+"	<text x=\"870\" y=\"95\" style=\"font-family: Palatino;font-size:48px;fill: #cccccc; stroke: #404040\" >V"
+VERSION
+"</text>"
 "	</svg>\n";
 
 static const char*textEnd="</body></html>";

@@ -72,6 +72,7 @@ struct VulkanMiner {
 	uint32_t memFactor;
 	uint32_t 	tmpResults[256];
 	uint64_t   cnrHeight;
+	uint64_t   cnrSubmittedHeight;
 	CryptoType currentCrypto;
 };
 

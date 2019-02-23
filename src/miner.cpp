@@ -175,6 +175,20 @@ static uint64_t now(void) {
 	return (uint64_t) tv.tv_sec * 1000 * 1000 + tv.tv_usec;
 }
 
+
+static void getParams(VulkanMiner &vulkanMiner,Params	&params ) {
+	params.target = vulkanMiner.target;
+	params.memorySize = vulkanMiner.scratchpadSize[getCurrentIndex()];
+	params.global_work_offset = vulkanMiner.nonce;
+	params.iterations = 524288 / getIterationFactor(getCryptoType(getCurrentIndex()));
+	params.mask = 2097136 / getMemFactor(getCryptoType(getCurrentIndex()));
+	params.threads = vulkanMiner.threads[getCurrentIndex()];
+	params.scratchpatSplit = vulkanMiner.scratchSplit[getCurrentIndex()];
+	if (vulkanMiner.cpuMiner.type == TurtleCrypto) {
+		params.mask = 0x1FFF0;
+	}
+}
+
 static void rebuildCryptonightRIfRequired(VulkanMiner &miner, bool reload)  {
 	// need to rebuild the SPIR-V file
 	if (miner.height != miner.cnrHeight) {
@@ -182,10 +196,12 @@ static void rebuildCryptonightRIfRequired(VulkanMiner &miner, bool reload)  {
 		bool _hasHighMemory = hasHighMemory(miner);
 		sem_wait(&mutex);
 		struct V4_Instruction code[TOTAL_LATENCY * ALU_COUNT + 1];
-		v4_random_math_init(code, miner.height);
-		buildCryptonightR(code,false,miner.cpuMiner.memFactor==2,miner.local_size_cn1,false);
+		v4_random_math_init(code, miner.height,miner.currentCrypto);
+		Params params;
+		getParams(miner,params);
+		buildCryptonightR(code,false,miner.cpuMiner.memFactor==2,miner.local_size_cn1,false,params.iterations,params.mask,miner.currentCrypto);
 		if (_hasHighMemory)
-			buildCryptonightR(code,true,miner.cpuMiner.memFactor==2,miner.local_size_cn1,false);
+			buildCryptonightR(code,true,miner.cpuMiner.memFactor==2,miner.local_size_cn1,false,params.iterations,params.mask,miner.currentCrypto);
 
 		if (reload) {
 			vkDestroyPipeline(miner.vkDevice,miner.pipeline_cn1, nullptr);
@@ -280,7 +296,7 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 
 	// process latest results while GPU is working
 	if (vulkanMiner.nrResults > 0) {
-		for (int i=0; i< vulkanMiner.nrResults; i++) {
+		for (int i=0; i< vulkanMiner.nrResults && vulkanMiner.cnrSubmittedHeight == vulkanMiner.height; i++) {
 			unsigned char hash[256/8];			// 256 bits
 			applyNonce(vulkanMiner.originalInput, vulkanMiner.tmpResults[i]);
 			bool candidate = cn_slow_hash(vulkanMiner.originalInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height);
@@ -301,6 +317,7 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 	for (int i = 0; i < vulkanMiner.nrResults; i++) {
 		vulkanMiner.tmpResults[i] = (int) vulkanMiner.resultPtr[i];
 	}
+	vulkanMiner.cnrSubmittedHeight = vulkanMiner.height;
 	memcpy(&vulkanMiner.originalInput,&vulkanMiner.input,vulkanMiner.inputLen);
 }
 
@@ -320,19 +337,10 @@ void reloadInput(VulkanMiner &vulkanMiner, int nonce) {
 	vulkanMiner.nrResults = 0;
 }
 
+
 void sendMiningParameters(VulkanMiner &vulkanMiner) {
 	Params	params;
-	params.target = vulkanMiner.target;
-	params.memorySize = vulkanMiner.scratchpadSize[getCurrentIndex()];
-	params.global_work_offset = vulkanMiner.nonce;
-	params.iterations = 524288 / getIterationFactor(getCryptoType(getCurrentIndex()));
-	params.mask = 2097136 / getMemFactor(getCryptoType(getCurrentIndex()));
-	params.threads = vulkanMiner.threads[getCurrentIndex()];
-	params.scratchpatSplit = vulkanMiner.scratchSplit[getCurrentIndex()];
-	if (vulkanMiner.cpuMiner.type == TurtleCrypto) {
-		params.mask = 0x1FFF0;
-	}
-
+	getParams(vulkanMiner,params);
 	char *ptr = NULL;
 	unmapMiningResults(vulkanMiner);
 	CHECK_RESULT(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory, 0, sizeof(Params), 0, (void **)&ptr),"vkMapMemory");
@@ -493,6 +501,7 @@ static void reloadPipeline(VulkanMiner &vulkanMiner, int variant) {
 	if (variant == 4) {
 		rebuildCryptonightRIfRequired(vulkanMiner,false);
 		vulkanMiner.pipeline_cn1 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, getCryptonightRSpirVName(false,vulkanMiner.local_size_cn1));
+
 		if (_hasHighMemory) {
 			vkDestroyPipeline(vulkanMiner.vkDevice,vulkanMiner.pipeline_cn1b, nullptr);
 			vulkanMiner.pipeline_cn1b = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, getCryptonightRSpirVName(true,vulkanMiner.local_size_cn1));
@@ -520,6 +529,7 @@ void *MinerThread(void *args)
 	getCurrentBlob(miner.input,&inputLen);
 	memcpy(&miner.originalInput,&miner.input,miner.inputLen);
 	miner.target = getTarget();
+	miner.cpuMiner.variant = getVariant();
 	reloadInput(miner,nonce);
 	sendMiningParameters(miner);
 

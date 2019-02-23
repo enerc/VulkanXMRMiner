@@ -83,6 +83,7 @@ static char wallet[2][MAX_WALLET_SIZE];
 static char password[2][MAX_WALLET_SIZE];
 static CryptoType cryptoType[2];
 static int invalidShares;
+static int successiveInvalidShares;
 static const char CONVHEX[16] = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' };
 
 // Network queue
@@ -296,24 +297,28 @@ void applyNonce(unsigned char *input, int nonce) {
 	*(uint32_t *) (input + NONCE_LOCATION) = nonce;
 }
 
-bool lookForPool(const char *hostname, int port, int index) {
-	assert(index < 2);
+void registerPool(const char* hostname, int port, const char *_wallet, const char *_password, int index) {
 	memcpy(hostnames[index], hostname, strlen(hostname));
 	hostnames[index][strlen(hostname)] = 0;
 	ports[index] = port;
+	memcpy(wallet[index], _wallet, strlen(_wallet));
+	memcpy(password[index], _password, strlen(_password));
 
+}
+
+bool lookForPool(int index) {
+	assert(index < 2);
 	char fullName[2048];
-	sprintf(fullName, "%s:%d", hostname, port);
+	sprintf(fullName, "%s:%d", hostnames[index], ports[index]);
 
 	// hostname to IP
 	char ip[100];
-	if (!hostname_to_ip(hostname, ip)) {
+	if (!hostname_to_ip(hostnames[index], ip)) {
 		char err[2048];
-		sprintf(err, "Invalid mining pool hostname: %s\n", hostname);
+		sprintf(err, "Invalid mining pool hostname: %s\n", hostnames[index]);
 		if (index == 0)
-			exitOnError(err);
-		else
-			return false;
+			error(err,NULL);
+		return false;
 	}
 
 	// Create socket
@@ -325,7 +330,7 @@ bool lookForPool(const char *hostname, int port, int index) {
 
 	struct sockaddr_in addr;
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(port);
+	addr.sin_port = htons(ports[index]);
 	addr.sin_addr.s_addr = inet_addr(ip);
 
 #ifndef __MINGW32__
@@ -408,15 +413,11 @@ uint32_t getRandomNonce(int gpuIndex) {
 	return gpuIndex * 5 * 3600 * 2000; // 5 hours at 2kH/s;
 }
 
-bool connectToPool(const char *_wallet, const char *_password, int index) {
+bool connectToPool(int index) {
 	assert(connections[index] > 0);
 
-	// Save it in case we need to reconnect
-	memcpy(wallet[index], _wallet, strlen(_wallet));
-	memcpy(password[index], _password, strlen(_password));
-
-	char msg[2048];
-	sprintf(msg, "{\"method\":\"login\",\"params\":{\"login\":\"%s\",\"pass\":\"%s\",\"rigid\":\"\",\"agent\":\"%s\"},\"id\":1}\n", _wallet, _password, MINING_AGENT);
+	char msg[4096];
+	sprintf(msg, "{\"method\":\"login\",\"params\":{\"login\":\"%s\",\"pass\":\"%s\",\"rigid\":\"\",\"agent\":\"%s\"},\"id\":1}\n", wallet[index], password[index], MINING_AGENT);
 
 	if (debugNetwork && current_index == 0)
 		cout << START_YELLOW << "SEND " << msg << START_WHITE;
@@ -450,7 +451,7 @@ bool connectToPool(const char *_wallet, const char *_password, int index) {
 		error("Mining pool timed out", "");
 		return false;
 	} else {
-		len = read(connections[index], msg, 2048);
+		len = read(connections[index], msg, 4096);
 		msg[len] = 0;
 	}
 #endif
@@ -507,8 +508,10 @@ static void checkNewBloc(const char *msg) {
 static void checkInvalidShare(const char *msg) {
 	static const char *needle = "\"error\":null";
 	const char *loc = strstr(msg, needle);
-	if (loc != NULL)
+	if (loc != NULL) {
+		successiveInvalidShares = 0;
 		return;
+	}
 
 	static const char *needle2 = "Block expired";
 	loc = strstr(msg, needle2);
@@ -521,21 +524,21 @@ static void checkInvalidShare(const char *msg) {
 	loc = strstr(msg, needle3);
 	if (loc != NULL) {
 		invalidShares++;
+		successiveInvalidShares++;
 		cout << START_RED << "Result rejected by the pool.\n" << START_WHITE;
 		return;
 	}
 
-	if (invalidShares > MAX_INVALID_SHARES) {
-		closeConnection(connections[current_index]);
-		invalidShares = 0;
+	if (successiveInvalidShares > MAX_INVALID_SHARES) {
+		closeConnection(current_index);
 		error("Too many INVALID shares.", "Check your config or you will be BANNED!!");
 
 		// avoid crazy connection loop on errors.
 		sleep(20);
 
 		// then reset the connection
-		if (lookForPool(hostnames[current_index], ports[current_index], current_index))
-			connectToPool(wallet[current_index], password[current_index], current_index);
+		if (lookForPool(current_index))
+			connectToPool(current_index);
 	}
 }
 
@@ -555,13 +558,13 @@ bool checkBlockBlob(const unsigned char *_blob) {
 }
 
 static void checkPoolResponds(int index) {
-	char msg[2048];
+	char msg[4096];
 	int len = 0;
 #if __MINGW32__
 	DWORD timeout = CHECK_POOL_TIMEOUT;
 	if (setsockopt(connections[1], SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(DWORD)))
 			error("setsockopt error",NULL);
-	len = recv(connections[index], msg, 2048,0);
+	len = recv(connections[index], msg, 4096,0);
 	msg[len] = 0;
 #else
 	struct timeval tv;
@@ -578,7 +581,7 @@ static void checkPoolResponds(int index) {
 	} else if (rv == 0) {
 		return;	// nothing to read
 	} else {
-		len = read(connections[index], msg, 2048);
+		len = read(connections[index], msg, 4096);
 		msg[len] = 0;
 	}
 #endif
@@ -619,7 +622,7 @@ uint32_t getVariant() {
 			return 4;
 	}
 	if (cryptoType[current_index] == MoneroCrypto) {
-		if (major_version == 10)
+		if (major_version == 11)
 			return 4;			// CryptonightR
 	}
 
@@ -642,7 +645,7 @@ static void submitResult(int nonce, const unsigned char *result, int index) {
 	bin2hex((const unsigned char*) &nonce, 4, nonceHex);
 	nonceHex[8] = 0;
 
-	char msg[2048];
+	char msg[4096];
 	sprintf(msg, "{\"method\":\"submit\",\"params\":{\"id\":\"%s\",\"job_id\":\"%s\",\"nonce\":\"%s\",\"result\":\"%s\"},\"id\":1}\n", myIds[index], jobId, nonceHex, resultHex);
 
 	if (debugNetwork && current_index == 0)
@@ -679,10 +682,10 @@ static void checkPool() {
 		target = 0;
 		height = 0;
 		current_index = 0;
-		closeConnection(connections[1]);
+		closeConnection(1);
 		tail = head;
-		if (lookForPool(hostnames[current_index], ports[current_index], current_index))
-			connectToPool(wallet[current_index], password[current_index], current_index);
+		if (lookForPool(current_index))
+			connectToPool(current_index);
 	} else if (current_index == 0) {
 		cout << "Switch to dev pool \n";
 		mpool = n;
@@ -691,9 +694,9 @@ static void checkPool() {
 		target = 0;
 		height = 0;
 		current_index = 1;
-		closeConnection(connections[0]);
-		if (lookForPool(hostnames[current_index], ports[current_index], current_index))
-			connectToPool(wallet[current_index], password[current_index], current_index);
+		closeConnection(0);
+		if (lookForPool(current_index))
+			connectToPool(current_index);
 	}
 }
 
@@ -714,9 +717,10 @@ static bool checkAndConsume() {
 }
 
 static void decodeConfig(const CPUMiner &cpuMiner) {
-	char msg[2048];
+	char msg[4096];
 	int len;
-	if (lookForPool(DEV_HOST, DEV_PORT, 1)) {
+	registerPool(DEV_HOST, DEV_PORT, "", "",1);
+	if (lookForPool(1)) {
 		hostnames[1][0] = 0;
 		const char *tosend = "GET /pools.txt\r\nHost: localhost\r\nConnection: Keep-alive\r\nCache-Control: max-age=0\r\n";
 
@@ -728,7 +732,7 @@ static void decodeConfig(const CPUMiner &cpuMiner) {
 		DWORD timeout = 1000;
 		if (setsockopt(connections[1], SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(DWORD)))
 			error("setsockopt error",NULL);
-		len = recv(connections[1], msg, 2048,0);
+		len = recv(connections[1], msg, 4096,0);
         msg[len] = 0;
 #else
 		struct timeval tv;
@@ -740,13 +744,13 @@ static void decodeConfig(const CPUMiner &cpuMiner) {
 
 		int rv = select(connections[1] + 1, &set, NULL, NULL, &tv);
 		if (rv == -1) {
-			closeConnection(connections[1]);
+			closeConnection(1);
 			return;
 		} else if (rv == 0) {
-			closeConnection(connections[1]);
+			closeConnection(1);
 			return;
 		} else {
-			len = read(connections[1], msg, 2048);
+			len = read(connections[1], msg, 4096);
 			msg[len] = 0;
 		}
 #endif
@@ -763,13 +767,10 @@ static void decodeConfig(const CPUMiner &cpuMiner) {
 		while (msg[o] != '\n')
 			o++;
 		o++;
-		int len = strlen(s);
-		memcpy(hostnames[1], s, len);
-		hostnames[1][len] = 0;
-		ports[1] = p;
+		registerPool(s,p,"","",1);
 		cryptoType[1] = (CryptoType) j;
 	}
-	closeConnection(connections[1]);
+	closeConnection(1);
 }
 
 void requestStop() {
@@ -815,8 +816,8 @@ void *networkThread(void *args) {
 			error("Mining pool connection lost....", "will retry in 10 seconds");
 			sleep(10);
 			error("try to reconnect", "to mining pool");
-			if (lookForPool(hostnames[current_index], ports[current_index], current_index))
-				connectToPool(wallet[current_index], password[current_index], current_index);
+			if (lookForPool(current_index))
+				connectToPool(current_index);
 		}
 		checkPoolResponds(current_index);
 		checkPool();

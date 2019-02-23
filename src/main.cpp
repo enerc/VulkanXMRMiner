@@ -113,8 +113,9 @@ int main(int argc, char **argv) {
 	initNetwork(cpuMiner);
 	initMiners();
 
-	if (lookForPool(config.poolAddress, config.poolPort, 0))
-		connectToPool(config.address, config.poolPassword, 0);
+	registerPool(config.poolAddress,config.poolPort,config.address, config.poolPassword,0);
+	if (lookForPool(0))
+		connectToPool(0);
 
 	startNetworkBG();
 
@@ -127,7 +128,11 @@ int main(int argc, char **argv) {
 		sleep(5);
 	}
 	cpuMiner.variant = getVariant();
-	cout << "Using XMR Variant: " <<  cpuMiner.variant << "\n";
+	cout << "Using XMR Variant: ";
+	if (cpuMiner.variant != 4)
+		cout <<  cpuMiner.variant << "\n";
+	else
+		cout << (cpuMiner.type == MoneroCrypto ? "cn/r\n" : "cn/wow\n");
 
 	pthread_t threads[MAX_GPUS];
 	VulkanMiner miners[MAX_GPUS];

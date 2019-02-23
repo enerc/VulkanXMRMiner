@@ -10,8 +10,8 @@
 
 void initNetwork(const CPUMiner &cpuMiner);
 void closeNetwork();
-bool lookForPool(const char *hostname, int port, int index);
-bool connectToPool(const char *wallet, const char *password, int index);
+bool lookForPool(int index);
+bool connectToPool(int index);
 void closeConnection(int index);
 void getCurrentBlob(unsigned char *blob, int *size);
 uint64_t getTarget();
@@ -33,5 +33,6 @@ void setHashesPerSec(float hashesPerSec);
 float getHashesPerSec();
 void setTotalShares(int totalShares);
 uint32_t getTotalShares();
+void registerPool(const char* name, int port,const char *wallet, const char *password, int index);
 
 #endif /* NETWORK_HPP_ */
