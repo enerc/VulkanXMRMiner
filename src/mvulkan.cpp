@@ -139,6 +139,7 @@ VkDevice createDevice(int index,uint32_t computeQueueFamillyIndex) {
 	std::vector<const char*> deviceExtensions;
 	if (forceAMD)
 		deviceExtensions.push_back("VK_AMD_shader_info");
+
 	const VkDeviceCreateInfo deviceCreateInfo = {
 			VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 			0,

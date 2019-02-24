@@ -107,7 +107,7 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 	s << "#define INDEX1  (scratchpadOffset + ((idx0 >> 4) ^ 1))\n";
 	s << "#define INDEX2  (scratchpadOffset + ((idx0 >> 4) ^ 2))\n";
 	s << "#define INDEX3  (scratchpadOffset + ((idx0 >> 4) ^ 3))\n";
-	s << "#define BYTE(x,b)  ((x) >> (8*(b)))&0xff\n";
+	s << "#define BYTE(x,b) bitfieldExtract(x,8*(b),8)\n";
 	if (light)
 		s << "#define SCRATCHPAD_SPLIT 3584\n";
 	else
@@ -122,7 +122,7 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 	else
 		s << "uint r0,r1,r2,r3,r4,r5,r6,r7,r8;\n";
 	s << "const uint lIdx = gl_LocalInvocationID.x;\n";
-	s << "const uint gIdx = gl_GlobalInvocationID.x ";
+	s << "const uint gIdx = gl_GlobalInvocationID.x";
 	if (hi) s << " + SCRATCHPAD_SPLIT";
 	s << ";\n";
 	s << "for(uint i = lIdx ; i < 256; i += " << localSize << ") {const uint tmp = AES0_C[i];AES0[i] = tmp;AES1[i] = rotate32(tmp, 8U);AES2[i] = rotate32(tmp, 16U);AES3[i] = rotate32(tmp, 24U);}\n";

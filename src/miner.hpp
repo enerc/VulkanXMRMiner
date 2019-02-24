@@ -1,5 +1,9 @@
 #ifndef MINER_HPP_
 #define MINER_HPP_
+#ifdef __MINGW32__
+#include <windows.h>
+#endif
+
 #include "slow_hash.hpp"
 #include "config.hpp"
 #include "network.hpp"
@@ -92,6 +96,11 @@ void incGoodHash(int gpuIndex);
 void incBadHash(int gpuIndex);
 int getGoodHash(int gpuIndex);
 int getBadHash(int gpuIndex);
+
+#ifdef __MINGW32__
+DWORD WINAPI MinerThread(LPVOID args);
+#else
 void *MinerThread(void *args);
+#endif
 
 #endif /* MINER_HPP_ */

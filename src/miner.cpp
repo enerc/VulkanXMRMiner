@@ -41,11 +41,20 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 static VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, 0, 0, 0 };
 static uint32_t goodHash[MAX_GPUS];
 static uint32_t badhash[MAX_GPUS];
+#ifdef __MINGW32__
+static HANDLE mutex;
+#else
 static sem_t mutex;
+#endif
+
 uint64_t hashRates[MAX_GPUS];
 
 void initMiners() {
+#ifdef __MINGW32__
+	mutex = CreateMutex(NULL,FALSE,"Miner Mutex");
+#else
 	sem_init(&mutex, 0, 1);
+#endif
 }
 
 static bool hasHighMemory(VulkanMiner &vulkanMiner) {
@@ -194,7 +203,12 @@ static void rebuildCryptonightRIfRequired(VulkanMiner &miner, bool reload)  {
 	if (miner.height != miner.cnrHeight) {
 		//std::cout << "Rebuild cryptonightR for height " << miner.height << "\n";
 		bool _hasHighMemory = hasHighMemory(miner);
+#ifdef __MINGW32__
+		if (WaitForSingleObject(mutex, INFINITE) != WAIT_OBJECT_0)
+			error("Cannot acquire mutex",NULL);
+#else
 		sem_wait(&mutex);
+#endif
 		struct V4_Instruction code[TOTAL_LATENCY * ALU_COUNT + 1];
 		v4_random_math_init(code, miner.height,miner.currentCrypto);
 		Params params;
@@ -211,7 +225,11 @@ static void rebuildCryptonightRIfRequired(VulkanMiner &miner, bool reload)  {
 				miner.pipeline_cn1b = loadShader(miner.vkDevice, miner.pipelineLayout,miner.shader_module, getCryptonightRSpirVName(true,miner.local_size_cn1));
 			}
 		}
+#ifdef __MINGW32__
+		ReleaseMutex(mutex);
+#else
 		sem_post(&mutex);
+#endif
 		miner.cnrHeight = miner.height;
 		resetCommandBuffer(miner);
 	}
@@ -312,7 +330,6 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 		res = vkWaitForFences(vulkanMiner.vkDevice, 1, &vulkanMiner.drawFence, VK_TRUE, delay );
 	} while (res == VK_TIMEOUT);
 	vkResetFences(vulkanMiner.vkDevice, 1, &vulkanMiner.drawFence);
-
 	vulkanMiner.nrResults = (int) vulkanMiner.resultPtr[255];
 	for (int i = 0; i < vulkanMiner.nrResults; i++) {
 		vulkanMiner.tmpResults[i] = (int) vulkanMiner.resultPtr[i];
@@ -518,14 +535,18 @@ static void reloadPipeline(VulkanMiner &vulkanMiner, int variant) {
 	resetCommandBuffer(vulkanMiner);
 }
 
+#ifdef __MINGW32__
+DWORD WINAPI MinerThread(LPVOID args)
+#else
 void *MinerThread(void *args)
+#endif
 {
 	// force the copy constructor
 	VulkanMiner miner = *(VulkanMiner*)args;
 	miner.nrResults = 0;
 	miner.cnrHeight = 0;
 	int inputLen;
-	int nonce = getRandomNonce(miner.deviceId);
+	int nonce = getRandomNonce(miner.index);
 	getCurrentBlob(miner.input,&inputLen);
 	memcpy(&miner.originalInput,&miner.input,miner.inputLen);
 	miner.target = getTarget();
@@ -550,7 +571,7 @@ void *MinerThread(void *args)
 
 		if (!checkBlob((unsigned char *)miner.originalInput)) {
 			unmapMiningResults(miner);
-			nonce=	getRandomNonce(miner.deviceId);
+			nonce=	getRandomNonce(miner.index);
 			miner.target = getTarget();
 			reloadInput(miner,nonce);
 			sendMiningParameters(miner);
@@ -564,5 +585,9 @@ void *MinerThread(void *args)
 
 	shutdownDevice(miner);
 	std::cout << "Miner[" << miner.index << "] closed\n";
+#ifdef __MINGW32__
+	return 0;
+#else
 	return NULL;
+#endif
 }

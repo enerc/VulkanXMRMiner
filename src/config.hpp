@@ -1,7 +1,7 @@
 #ifndef CONFIG_HPP_
 #define CONFIG_HPP_
 
-#define VERSION 		"0.3 - Albatros"
+#define VERSION 		"0.3"
 
 #define MAX_ADRESS_SIZE 256
 #define MAX_POOLNAME_SIZE 128

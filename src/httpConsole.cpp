@@ -21,6 +21,7 @@
 #include <ws2tcpip.h>
 #include <winsock.h>
 #include <winsock2.h>
+#include <windows.h>
 #define MSG_NOSIGNAL 0
 #else
 #include <netinet/in.h>
@@ -46,7 +47,12 @@
 #define HASH_HISTORY	  (12*3600/30)
 using namespace std;
 
+#ifdef __MINGW32__
+static HANDLE thread_id;
+#else
 static pthread_t thread_id;
+#endif
+
 static int sockfd;
 static bool serverRunning;
 static struct sockaddr_in serv_addr;
@@ -2749,7 +2755,11 @@ void stopConsoleBG() {
 	close(sockfd);
 }
 
+#ifdef __MINGW32__
+DWORD WINAPI consoleThread(LPVOID args) {
+#else
 void *consoleThread(void *args) {
+#endif
 	while (!getStopRequested()) {
 		struct sockaddr_in cli_addr;
 
@@ -2800,17 +2810,31 @@ void *consoleThread(void *args) {
 
 		close(newsockfd);
 	}
+#ifdef __MINGW32__
+	return 0;
+#else
 	return NULL;
+#endif
 }
 
+#ifdef __MINGW32__
+HANDLE startConsoleBG(int port) {
+#else
 pthread_t startConsoleBG(int port) {
+#endif
 	if (port ==0) return 0;	// no console
 
 	serverRunning = true;
 	initServer(port);
 
-	if (serverRunning)
+	if (serverRunning) {
+#ifdef __MINGW32__
+		DWORD ThreadId;
+		thread_id = CreateThread(NULL,0,consoleThread, NULL,0,&ThreadId);
+		return thread_id;
+#else
 		return pthread_create(&thread_id, NULL, consoleThread, NULL);
-	else
+#endif
+	} else
 		return 0;
 }

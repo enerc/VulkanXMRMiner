@@ -28,6 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <winsock.h>
 #include <winsock2.h>
 #include <conio.h>
+#include <windows.h>
 #else
 #include <termios.h>
 #endif
@@ -52,11 +53,13 @@ static const char *START_STUCKED="";
 static const char *START_GREEN="";
 static const char *START_LIGHT_GREEN = "";
 static const char *START_WHITE="";
+#define THREAD_HANDLE HANDLE
 #else
 static const char *START_STUCKED = "\e[91m";
 static const char *START_GREEN = "\e[32m";
 static const char *START_LIGHT_GREEN = "\e[92m";
 static const char *START_WHITE = "\e[39m";
+#define THREAD_HANDLE pthread_t
 #endif
 
 #ifdef __MINGW32__
@@ -97,7 +100,9 @@ int main(int argc, char **argv) {
 	}
 #endif
 	cout << "Vulkan SPIR-V XMR Miner " << VERSION << "\n\n" << flush;
-
+#ifdef __MINGW32__
+	cout << "\nIf you experience very low hashrate, close apps like firefox, chrome,..., start the miner, and then reopen them.\n";
+#endif
 	if (!checkConfig())
 		makeConfig();
 
@@ -134,7 +139,7 @@ int main(int argc, char **argv) {
 	else
 		cout << (cpuMiner.type == MoneroCrypto ? "cn/r\n" : "cn/wow\n");
 
-	pthread_t threads[MAX_GPUS];
+	THREAD_HANDLE threads[MAX_GPUS];
 	VulkanMiner miners[MAX_GPUS];
 	for (int i = 0; i < config.nbGpus; i++) {
 		char deviceName[256];
@@ -144,9 +149,19 @@ int main(int argc, char **argv) {
 		VkDevice vkDevice = createDevice(devId, getComputeQueueFamillyIndex(devId));
 		initVulkanMiner(miners[i], vkDevice, cpuMiner, config.gpus[i].cu * config.gpus[i].factor, config.gpus[i].worksize, config.gpus[i].cu, devId, i);
 		loadSPIRV(miners[i]);
+#ifdef __MINGW32__
+		DWORD ThreadId;
+		threads[i] = CreateThread(NULL,0,MinerThread, &miners[i],0,&ThreadId);
+#else
 		pthread_create(&threads[i], NULL, MinerThread, &miners[i]);
+#endif
+		usleep(500000L);
 	}
+#ifdef __MINGW32__
+	HANDLE consoleThread = startConsoleBG(config.consoleListenPort);
+#else
 	pthread_t consoleThread = startConsoleBG(config.consoleListenPort);
+#endif
 	setFrequency(config.consoleRefreshRate);
 
 	cout << "Mining started.... (Press q to stop)\n";
@@ -212,10 +227,18 @@ int main(int argc, char **argv) {
 	requestStop();
 	cout << "Shutdown requested....\n";
 	for (int i = 0; i < config.nbGpus; i++)
+#ifdef __MINGW32__
+		WaitForSingleObject(threads[i],INFINITE);
+#else
 		pthread_join(threads[i], NULL);
+#endif
 
 	if (consoleThread != 0)
+#ifdef __MINGW32__
+		WaitForSingleObject(consoleThread,500);
+#else
 		pthread_join(consoleThread, NULL);
+#endif
 	stopConsoleBG();
 
 	vulkanEnd();
