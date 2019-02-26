@@ -5,7 +5,7 @@ This program is a Vulkan SPIR-V based miner for the Cryptonight familly:<br/><br
 <img src="https://www.aeon.cash/branding/aeon_logo_32x32.png" height="60" width="60" >
 <img src="http://wownero.org/images/wow.png" height="40" width="160" >
 <img src="https://raw.githubusercontent.com/turtlecoin/brand/master/logo/web/symbol/turtlecoin_symbol_color.png" height="70" width="70" >
-<img src="https://avatars3.githubusercontent.com/u/42850689?s=60&v=4" height="50" width="50" ><br/><br/>
+<br/><br/>
 This miner is based on Vulkan and SPIR-V technology (<b>not</b> OpenCL):<br/>
 <img src="https://www.khronos.org/assets/uploads/apis/vulkan2.svg" height="67" width="250" ><img src="https://www.khronos.org/assets/uploads/ceimg/made/assets/uploads/apis/SPIR_100px_June16_150_75.png" height="67" width="250" >
 <br/><br/><br/>
@@ -15,8 +15,7 @@ What's Vulkan:<br/>
 This program should work on any Vulkan 1.0 compatible device: AMD, Intel, Nvidia.
 
 # Download and run
-You can get Windows binaries here:  <a href="https://github.com/enerc/VulkanXMRMiner/raw/master/dist/vulkanXMRMiner-0.2.zip">Download as zip file</a> <br />
-You can get Linux binaries here:  <a href="https://github.com/enerc/VulkanXMRMiner/raw/master/dist/VulkanXMRMiner-0.2.tgz">Download binaries as compressed tar file</a> <br />
+You can get binaries in therelease section here:  <a href="https://github.com/enerc/VulkanXMRMiner/releases">Releases</a> <br />
 
 Extract the zip file, and run miner.exe / miner.<br/>
 
