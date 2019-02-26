@@ -471,6 +471,7 @@ VkPipeline loadShader(VkDevice vkDevice, VkPipelineLayout pipelineLayout,VkShade
 	CHECK_RESULT(vkCreateComputePipelines(vkDevice, 0, 1, &computePipelineCreateInfo, 0, &pipeline),"vkCreateComputePipelines");
 
 	free(shader);
+	fclose(fp);
 	return pipeline;
 }
 
