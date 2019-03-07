@@ -41,6 +41,11 @@ if(NOT VulkanIncludes)
   message(FATAL_ERROR "Can't find folder containing vulkan.h")
 endif()
 
+if (SOFT_AES)
+	message("Build without aesi-ni")
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSOFT_AES " CACHE STRING "compile flags" FORCE)
+endif()
+	
 # Add Include/Lib (Windows) and include/lib (Linux)
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
   set(ADDITIONAL_LIBRARIES vulkan-1 pthread ws2_32)

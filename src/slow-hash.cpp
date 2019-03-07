@@ -43,6 +43,10 @@
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
+#include <time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/timeb.h>
 
 #include <cstdint>
 
@@ -3054,6 +3058,510 @@ static void check_data(size_t* data_index, const size_t bytes_needed, int8_t* da
 	}
 }
 
+static OAES_RET oaes_key_destroy(oaes_key ** key) {
+	if ( NULL == *key)
+		return OAES_RET_SUCCESS;
+
+	if ((*key)->data) {
+		free((*key)->data);
+		(*key)->data = NULL;
+	}
+
+	if ((*key)->exp_data) {
+		free((*key)->exp_data);
+		(*key)->exp_data = NULL;
+	}
+
+	(*key)->data_len = 0;
+	(*key)->exp_data_len = 0;
+	(*key)->num_keys = 0;
+	(*key)->key_base = 0;
+	free(*key);
+	*key = NULL;
+
+	return OAES_RET_SUCCESS;
+}
+
+static OAES_RET oaes_word_rot_left(uint8_t word[OAES_COL_LEN]) {
+	uint8_t _temp[OAES_COL_LEN];
+
+	if ( NULL == word)
+		return OAES_RET_ARG1;
+
+	memcpy(_temp, word + 1, OAES_COL_LEN - 1);
+	_temp[OAES_COL_LEN - 1] = word[0];
+	memcpy(word, _temp, OAES_COL_LEN);
+
+	return OAES_RET_SUCCESS;
+}
+
+static uint8_t oaes_sub_byte_value[16][16] = {
+// 		0,    1,    2,    3,    4,    5,    6,    7,    8,    9,    a,    b,    c,    d,    e,    f,
+		/*0*/{ 0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76 },
+		/*1*/{ 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0 },
+		/*2*/{ 0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15 },
+		/*3*/{ 0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75 },
+		/*4*/{ 0x09, 0x83, 0x2c, 0x1a, 0x1b, 0x6e, 0x5a, 0xa0, 0x52, 0x3b, 0xd6, 0xb3, 0x29, 0xe3, 0x2f, 0x84 },
+		/*5*/{ 0x53, 0xd1, 0x00, 0xed, 0x20, 0xfc, 0xb1, 0x5b, 0x6a, 0xcb, 0xbe, 0x39, 0x4a, 0x4c, 0x58, 0xcf },
+		/*6*/{ 0xd0, 0xef, 0xaa, 0xfb, 0x43, 0x4d, 0x33, 0x85, 0x45, 0xf9, 0x02, 0x7f, 0x50, 0x3c, 0x9f, 0xa8 },
+		/*7*/{ 0x51, 0xa3, 0x40, 0x8f, 0x92, 0x9d, 0x38, 0xf5, 0xbc, 0xb6, 0xda, 0x21, 0x10, 0xff, 0xf3, 0xd2 },
+		/*8*/{ 0xcd, 0x0c, 0x13, 0xec, 0x5f, 0x97, 0x44, 0x17, 0xc4, 0xa7, 0x7e, 0x3d, 0x64, 0x5d, 0x19, 0x73 },
+		/*9*/{ 0x60, 0x81, 0x4f, 0xdc, 0x22, 0x2a, 0x90, 0x88, 0x46, 0xee, 0xb8, 0x14, 0xde, 0x5e, 0x0b, 0xdb },
+		/*a*/{ 0xe0, 0x32, 0x3a, 0x0a, 0x49, 0x06, 0x24, 0x5c, 0xc2, 0xd3, 0xac, 0x62, 0x91, 0x95, 0xe4, 0x79 },
+		/*b*/{ 0xe7, 0xc8, 0x37, 0x6d, 0x8d, 0xd5, 0x4e, 0xa9, 0x6c, 0x56, 0xf4, 0xea, 0x65, 0x7a, 0xae, 0x08 },
+		/*c*/{ 0xba, 0x78, 0x25, 0x2e, 0x1c, 0xa6, 0xb4, 0xc6, 0xe8, 0xdd, 0x74, 0x1f, 0x4b, 0xbd, 0x8b, 0x8a },
+		/*d*/{ 0x70, 0x3e, 0xb5, 0x66, 0x48, 0x03, 0xf6, 0x0e, 0x61, 0x35, 0x57, 0xb9, 0x86, 0xc1, 0x1d, 0x9e },
+		/*e*/{ 0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf },
+		/*f*/{ 0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16 }, };
+
+static uint8_t oaes_gf_8[] = {	0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
+
+static OAES_RET oaes_sub_byte(uint8_t * byte) {
+	size_t _x, _y;
+
+	if ( NULL == byte)
+		return OAES_RET_ARG1;
+
+	_x = _y = *byte;
+	_x &= 0x0f;
+	_y &= 0xf0;
+	_y >>= 4;
+	*byte = oaes_sub_byte_value[_y][_x];
+
+	return OAES_RET_SUCCESS;
+}
+
+static OAES_RET oaes_key_expand(OAES_CTX * ctx) {
+	size_t _i, _j;
+	oaes_ctx * _ctx = (oaes_ctx *) ctx;
+
+	if ( NULL == _ctx)
+		return OAES_RET_ARG1;
+
+	if ( NULL == _ctx->key)
+		return OAES_RET_NOKEY;
+
+	_ctx->key->key_base = _ctx->key->data_len / OAES_RKEY_LEN;
+	_ctx->key->num_keys = _ctx->key->key_base + OAES_ROUND_BASE;
+
+	_ctx->key->exp_data_len = _ctx->key->num_keys * OAES_RKEY_LEN * OAES_COL_LEN;
+	_ctx->key->exp_data = (uint8_t *) calloc(_ctx->key->exp_data_len, sizeof(uint8_t));
+
+	if ( NULL == _ctx->key->exp_data)
+		return OAES_RET_MEM;
+
+	// the first _ctx->key->data_len are a direct copy
+	memcpy(_ctx->key->exp_data, _ctx->key->data, _ctx->key->data_len);
+
+	// apply ExpandKey algorithm for remainder
+	for (_i = _ctx->key->key_base; _i < _ctx->key->num_keys * OAES_RKEY_LEN; _i++) {
+		uint8_t _temp[OAES_COL_LEN];
+
+		memcpy(_temp, _ctx->key->exp_data + (_i - 1) * OAES_RKEY_LEN, OAES_COL_LEN);
+
+		// transform key column
+		if (0 == _i % _ctx->key->key_base) {
+			oaes_word_rot_left(_temp);
+
+			for (_j = 0; _j < OAES_COL_LEN; _j++)
+				oaes_sub_byte(_temp + _j);
+
+			_temp[0] = _temp[0] ^ oaes_gf_8[_i / _ctx->key->key_base - 1];
+		} else if (_ctx->key->key_base > 6 && 4 == _i % _ctx->key->key_base) {
+			for (_j = 0; _j < OAES_COL_LEN; _j++)
+				oaes_sub_byte(_temp + _j);
+		}
+
+		for (_j = 0; _j < OAES_COL_LEN; _j++) {
+			_ctx->key->exp_data[_i * OAES_RKEY_LEN + _j] = _ctx->key->exp_data[(_i - _ctx->key->key_base) * OAES_RKEY_LEN + _j] ^ _temp[_j];
+		}
+	}
+
+	return OAES_RET_SUCCESS;
+}
+
+static OAES_RET oaes_key_import_data(OAES_CTX * ctx, const uint8_t * data, size_t data_len) {
+	oaes_ctx * _ctx = (oaes_ctx *) ctx;
+	OAES_RET _rc = OAES_RET_SUCCESS;
+
+	if ( NULL == _ctx)
+		return OAES_RET_ARG1;
+
+	if ( NULL == data)
+		return OAES_RET_ARG2;
+
+	switch (data_len) {
+	case 16:
+	case 24:
+	case 32:
+		break;
+	default:
+		return OAES_RET_ARG3;
+	}
+
+	if (_ctx->key)
+		oaes_key_destroy(&(_ctx->key));
+
+	_ctx->key = (oaes_key *) calloc(sizeof(oaes_key), 1);
+
+	if ( NULL == _ctx->key)
+		return OAES_RET_MEM;
+
+	_ctx->key->data_len = data_len;
+	_ctx->key->data = (uint8_t *) calloc(data_len, sizeof(uint8_t));
+
+	if ( NULL == _ctx->key->data) {
+		oaes_key_destroy(&(_ctx->key));
+		return OAES_RET_MEM;
+	}
+
+	memcpy(_ctx->key->data, data, data_len);
+	//_rc = _rc || oaes_key_expand(ctx);
+
+	if (_rc != OAES_RET_SUCCESS || oaes_key_expand(ctx) != OAES_RET_SUCCESS) {
+		oaes_key_destroy(&(_ctx->key));
+		return _rc;
+	}
+
+	return OAES_RET_SUCCESS;
+}
+
+static OAES_RET oaes_set_option(OAES_CTX * ctx, OAES_OPTION option, const void * value) {
+	size_t _i;
+	oaes_ctx * _ctx = (oaes_ctx *) ctx;
+
+	if ( NULL == _ctx)
+		return OAES_RET_ARG1;
+
+	switch (option) {
+	case OAES_OPTION_ECB:
+		_ctx->options &= ~OAES_OPTION_CBC;
+		memset(_ctx->iv, 0, OAES_BLOCK_SIZE);
+		break;
+
+	case OAES_OPTION_CBC:
+		_ctx->options &= ~OAES_OPTION_ECB;
+		if (value)
+			memcpy(_ctx->iv, value, OAES_BLOCK_SIZE);
+		else {
+			for (_i = 0; _i < OAES_BLOCK_SIZE; _i++)
+#ifdef OAES_HAVE_ISAAC
+				_ctx->iv[_i] = (uint8_t) rand( _ctx->rctx );
+#else
+				_ctx->iv[_i] = (uint8_t) rand();
+#endif // OAES_HAVE_ISAAC
+		}
+		break;
+
+#ifdef OAES_DEBUG
+
+		case OAES_OPTION_STEP_ON:
+		if( value )
+		{
+			_ctx->options &= ~OAES_OPTION_STEP_OFF;
+			_ctx->step_cb = value;
+		}
+		else
+		{
+			_ctx->options &= ~OAES_OPTION_STEP_ON;
+			_ctx->options |= OAES_OPTION_STEP_OFF;
+			_ctx->step_cb = NULL;
+			return OAES_RET_ARG3;
+		}
+		break;
+
+		case OAES_OPTION_STEP_OFF:
+		_ctx->options &= ~OAES_OPTION_STEP_ON;
+		_ctx->step_cb = NULL;
+		break;
+
+#endif // OAES_DEBUG
+
+	default:
+		return OAES_RET_ARG2;
+	}
+
+	_ctx->options |= option;
+
+	return OAES_RET_SUCCESS;
+}
+
+#ifdef _MSC_VER
+#define GETPID() _getpid()
+#else
+#define GETPID() getpid()
+#endif
+
+#ifdef OAES_HAVE_ISAAC
+static void oaes_get_seed( char buf[RANDSIZ + 1] )
+{
+#if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__NetBSD__)
+	struct timeb timer;
+	struct tm *gmTimer;
+	char * _test = NULL;
+
+	ftime (&timer);
+	gmTimer = gmtime( &timer.time );
+	_test = (char *) calloc( sizeof( char ), timer.millitm );
+	sprintf( buf, "%04d%02d%02d%02d%02d%02d%03d%p%d",
+			gmTimer->tm_year + 1900, gmTimer->tm_mon + 1, gmTimer->tm_mday,
+			gmTimer->tm_hour, gmTimer->tm_min, gmTimer->tm_sec, timer.millitm,
+			_test + timer.millitm, GETPID() );
+#else
+	struct timeval timer;
+	struct tm *gmTimer;
+	char * _test = NULL;
+
+	gettimeofday(&timer, NULL);
+	gmTimer = gmtime( &timer.tv_sec );
+	_test = (char *) calloc( sizeof( char ), timer.tv_usec/1000 );
+	sprintf( buf, "%04d%02d%02d%02d%02d%02d%03d%p%d",
+			gmTimer->tm_year + 1900, gmTimer->tm_mon + 1, gmTimer->tm_mday,
+			gmTimer->tm_hour, gmTimer->tm_min, gmTimer->tm_sec, timer.tv_usec/1000,
+			_test + timer.tv_usec/1000, GETPID() );
+#endif
+
+	if( _test )
+	free( _test );
+}
+#else
+static uint32_t oaes_get_seed(void) {
+#if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__ANDROID__) && !defined(__NetBSD__)
+	struct timeb timer;
+	struct tm *gmTimer;
+	char * _test = NULL;
+	uint32_t _ret = 0;
+
+	ftime(&timer);
+	gmTimer = gmtime(&timer.time);
+	_test = (char *) calloc(sizeof(char), timer.millitm);
+	_ret = gmTimer->tm_year + 1900 + gmTimer->tm_mon + 1 + gmTimer->tm_mday + gmTimer->tm_hour + gmTimer->tm_min + gmTimer->tm_sec + timer.millitm + (uintptr_t) (_test + timer.millitm) + GETPID();
+#else
+	struct timeval timer;
+	struct tm *gmTimer;
+	char * _test = NULL;
+	uint32_t _ret = 0;
+
+	gettimeofday(&timer, NULL);
+	gmTimer = gmtime( &timer.tv_sec );
+	_test = (char *) calloc( sizeof( char ), timer.tv_usec/1000 );
+	_ret = gmTimer->tm_year + 1900 + gmTimer->tm_mon + 1 + gmTimer->tm_mday +
+	gmTimer->tm_hour + gmTimer->tm_min + gmTimer->tm_sec + timer.tv_usec/1000 +
+	(uintptr_t) ( _test + timer.tv_usec/1000 ) + GETPID();
+#endif
+
+	if (_test)
+		free(_test);
+
+	return _ret;
+}
+#endif // OAES_HAVE_ISAAC
+
+OAES_CTX * oaes_alloc(void) {
+	oaes_ctx * _ctx = (oaes_ctx *) calloc(sizeof(oaes_ctx), 1);
+
+	if ( NULL == _ctx)
+		return NULL;
+
+#ifdef OAES_HAVE_ISAAC
+	{
+		ub4 _i = 0;
+		char _seed[RANDSIZ + 1];
+
+		_ctx->rctx = (randctx *) calloc( sizeof( randctx ), 1 );
+
+		if( NULL == _ctx->rctx )
+		{
+			free( _ctx );
+			return NULL;
+		}
+
+		oaes_get_seed( _seed );
+		memset( _ctx->rctx->randrsl, 0, RANDSIZ );
+		memcpy( _ctx->rctx->randrsl, _seed, RANDSIZ );
+		randinit( _ctx->rctx, TRUE);
+	}
+#else
+	srand(oaes_get_seed());
+#endif // OAES_HAVE_ISAAC
+
+	_ctx	->key = NULL;
+	oaes_set_option(_ctx, OAES_OPTION_CBC, NULL);
+
+#ifdef OAES_DEBUG
+	_ctx->step_cb = NULL;
+	oaes_set_option( _ctx, OAES_OPTION_STEP_OFF, NULL );
+#endif // OAES_DEBUG
+
+	return (OAES_CTX *) _ctx;
+}
+
+OAES_RET oaes_free(OAES_CTX ** ctx) {
+	oaes_ctx ** _ctx = (oaes_ctx **) ctx;
+
+	if ( NULL == _ctx)
+		return OAES_RET_ARG1;
+
+	if ( NULL == *_ctx)
+		return OAES_RET_SUCCESS;
+
+	if ((*_ctx)->key)
+		oaes_key_destroy(&((*_ctx)->key));
+
+#ifdef OAES_HAVE_ISAAC
+	if( (*_ctx)->rctx )
+	{
+		free( (*_ctx)->rctx );
+		(*_ctx)->rctx = NULL;
+	}
+#endif // OAES_HAVE_ISAAC
+
+	free(*_ctx);
+	*_ctx = NULL;
+
+	return OAES_RET_SUCCESS;
+}
+
+#define TABLE_ALIGN     32
+#define WPOLY           0x011b
+#define N_COLS          4
+#define AES_BLOCK_SIZE  16
+#define RC_LENGTH (5 * (AES_BLOCK_SIZE / 4 - 2))
+
+#define rf1(r,c) (r)
+#define word_in(x,c) (*((uint32_t*)(x)+(c)))
+#define word_out(x,c,v) (*((uint32_t*)(x)+(c)) = (v))
+#define s(x,c) x[c]
+#define si(y,x,c) (s(y,c) = word_in(x, c))
+#define so(y,x,c) word_out(y, c, s(x,c))
+#define state_in(y,x) si(y,x,0); si(y,x,1); si(y,x,2); si(y,x,3)
+#define state_out(y,x)  so(y,x,0); so(y,x,1); so(y,x,2); so(y,x,3)
+#define round(rm,y,x,k) rm(y,x,k,0); rm(y,x,k,1); rm(y,x,k,2); rm(y,x,k,3)
+#define to_byte(x) ((x) & 0xff)
+#define bval(x,n) to_byte((x) >> (8 * (n)))
+
+#define fwd_var(x,r,c)\
+ ( r == 0 ? ( c == 0 ? s(x,0) : c == 1 ? s(x,1) : c == 2 ? s(x,2) : s(x,3))\
+ : r == 1 ? ( c == 0 ? s(x,1) : c == 1 ? s(x,2) : c == 2 ? s(x,3) : s(x,0))\
+ : r == 2 ? ( c == 0 ? s(x,2) : c == 1 ? s(x,3) : c == 2 ? s(x,0) : s(x,1))\
+ :          ( c == 0 ? s(x,3) : c == 1 ? s(x,0) : c == 2 ? s(x,1) : s(x,2)))
+
+#define fwd_rnd(y,x,k,c)  (s(y,c) = (k)[c] ^ (four_tables(x,t_use(f,n),fwd_var,rf1,c)))
+
+#define sb_data(w) {\
+  w(0x63), w(0x7c), w(0x77), w(0x7b), w(0xf2), w(0x6b), w(0x6f), w(0xc5),\
+  w(0x30), w(0x01), w(0x67), w(0x2b), w(0xfe), w(0xd7), w(0xab), w(0x76),\
+  w(0xca), w(0x82), w(0xc9), w(0x7d), w(0xfa), w(0x59), w(0x47), w(0xf0),\
+  w(0xad), w(0xd4), w(0xa2), w(0xaf), w(0x9c), w(0xa4), w(0x72), w(0xc0),\
+  w(0xb7), w(0xfd), w(0x93), w(0x26), w(0x36), w(0x3f), w(0xf7), w(0xcc),\
+  w(0x34), w(0xa5), w(0xe5), w(0xf1), w(0x71), w(0xd8), w(0x31), w(0x15),\
+  w(0x04), w(0xc7), w(0x23), w(0xc3), w(0x18), w(0x96), w(0x05), w(0x9a),\
+  w(0x07), w(0x12), w(0x80), w(0xe2), w(0xeb), w(0x27), w(0xb2), w(0x75),\
+  w(0x09), w(0x83), w(0x2c), w(0x1a), w(0x1b), w(0x6e), w(0x5a), w(0xa0),\
+  w(0x52), w(0x3b), w(0xd6), w(0xb3), w(0x29), w(0xe3), w(0x2f), w(0x84),\
+  w(0x53), w(0xd1), w(0x00), w(0xed), w(0x20), w(0xfc), w(0xb1), w(0x5b),\
+  w(0x6a), w(0xcb), w(0xbe), w(0x39), w(0x4a), w(0x4c), w(0x58), w(0xcf),\
+  w(0xd0), w(0xef), w(0xaa), w(0xfb), w(0x43), w(0x4d), w(0x33), w(0x85),\
+  w(0x45), w(0xf9), w(0x02), w(0x7f), w(0x50), w(0x3c), w(0x9f), w(0xa8),\
+  w(0x51), w(0xa3), w(0x40), w(0x8f), w(0x92), w(0x9d), w(0x38), w(0xf5),\
+  w(0xbc), w(0xb6), w(0xda), w(0x21), w(0x10), w(0xff), w(0xf3), w(0xd2),\
+  w(0xcd), w(0x0c), w(0x13), w(0xec), w(0x5f), w(0x97), w(0x44), w(0x17),\
+  w(0xc4), w(0xa7), w(0x7e), w(0x3d), w(0x64), w(0x5d), w(0x19), w(0x73),\
+  w(0x60), w(0x81), w(0x4f), w(0xdc), w(0x22), w(0x2a), w(0x90), w(0x88),\
+  w(0x46), w(0xee), w(0xb8), w(0x14), w(0xde), w(0x5e), w(0x0b), w(0xdb),\
+  w(0xe0), w(0x32), w(0x3a), w(0x0a), w(0x49), w(0x06), w(0x24), w(0x5c),\
+  w(0xc2), w(0xd3), w(0xac), w(0x62), w(0x91), w(0x95), w(0xe4), w(0x79),\
+  w(0xe7), w(0xc8), w(0x37), w(0x6d), w(0x8d), w(0xd5), w(0x4e), w(0xa9),\
+  w(0x6c), w(0x56), w(0xf4), w(0xea), w(0x65), w(0x7a), w(0xae), w(0x08),\
+  w(0xba), w(0x78), w(0x25), w(0x2e), w(0x1c), w(0xa6), w(0xb4), w(0xc6),\
+  w(0xe8), w(0xdd), w(0x74), w(0x1f), w(0x4b), w(0xbd), w(0x8b), w(0x8a),\
+  w(0x70), w(0x3e), w(0xb5), w(0x66), w(0x48), w(0x03), w(0xf6), w(0x0e),\
+  w(0x61), w(0x35), w(0x57), w(0xb9), w(0x86), w(0xc1), w(0x1d), w(0x9e),\
+  w(0xe1), w(0xf8), w(0x98), w(0x11), w(0x69), w(0xd9), w(0x8e), w(0x94),\
+  w(0x9b), w(0x1e), w(0x87), w(0xe9), w(0xce), w(0x55), w(0x28), w(0xdf),\
+  w(0x8c), w(0xa1), w(0x89), w(0x0d), w(0xbf), w(0xe6), w(0x42), w(0x68),\
+  w(0x41), w(0x99), w(0x2d), w(0x0f), w(0xb0), w(0x54), w(0xbb), w(0x16) }
+
+#define rc_data(w) {\
+  w(0x01), w(0x02), w(0x04), w(0x08), w(0x10),w(0x20), w(0x40), w(0x80),\
+  w(0x1b), w(0x36) }
+
+#define bytes2word(b0, b1, b2, b3) (((uint32_t)(b3) << 24) | \
+    ((uint32_t)(b2) << 16) | ((uint32_t)(b1) << 8) | (b0))
+
+#define h0(x)   (x)
+#define w0(p)   bytes2word(p, 0, 0, 0)
+#define w1(p)   bytes2word(0, p, 0, 0)
+#define w2(p)   bytes2word(0, 0, p, 0)
+#define w3(p)   bytes2word(0, 0, 0, p)
+
+#define u0(p)   bytes2word(f2(p), p, p, f3(p))
+#define u1(p)   bytes2word(f3(p), f2(p), p, p)
+#define u2(p)   bytes2word(p, f3(p), f2(p), p)
+#define u3(p)   bytes2word(p, p, f3(p), f2(p))
+
+#define v0(p)   bytes2word(fe(p), f9(p), fd(p), fb(p))
+#define v1(p)   bytes2word(fb(p), fe(p), f9(p), fd(p))
+#define v2(p)   bytes2word(fd(p), fb(p), fe(p), f9(p))
+#define v3(p)   bytes2word(f9(p), fd(p), fb(p), fe(p))
+
+#define f2(x)   ((x<<1) ^ (((x>>7) & 1) * WPOLY))
+#define f4(x)   ((x<<2) ^ (((x>>6) & 1) * WPOLY) ^ (((x>>6) & 2) * WPOLY))
+#define f8(x)   ((x<<3) ^ (((x>>5) & 1) * WPOLY) ^ (((x>>5) & 2) * WPOLY) ^ (((x>>5) & 4) * WPOLY))
+#define f3(x)   (f2(x) ^ x)
+#define f9(x)   (f8(x) ^ x)
+#define fb(x)   (f8(x) ^ f2(x) ^ x)
+#define fd(x)   (f8(x) ^ f4(x) ^ x)
+#define fe(x)   (f8(x) ^ f4(x) ^ f2(x))
+
+#define t_dec(m,n) t_##m##n
+#define t_set(m,n) t_##m##n
+#define t_use(m,n) t_##m##n
+
+#define d_4(t,n,b,e,f,g,h) const t n[4][256] = { b(e), b(f), b(g), b(h) }
+
+#define four_tables(x,tab,vf,rf,c) \
+  (tab[0][bval(vf(x,0,c),rf(0,c))] \
+   ^ tab[1][bval(vf(x,1,c),rf(1,c))] \
+   ^ tab[2][bval(vf(x,2,c),rf(2,c))] \
+   ^ tab[3][bval(vf(x,3,c),rf(3,c))])
+
+d_4(uint32_t, t_dec(f,n), sb_data, u0, u1, u2, u3);
+
+static void aesb_single_round(const uint8_t *in, uint8_t *out, uint8_t *expandedKey) {
+	uint32_t b0[4], b1[4];
+	const uint32_t *kp = (uint32_t *) expandedKey;
+	state_in(b0, in);
+
+	round(fwd_rnd, b1, b0, kp);
+
+	state_out(out, b1);
+}
+
+static void aesb_pseudo_round(const uint8_t *in, uint8_t *out, uint8_t *expandedKey) {
+	uint32_t b0[4], b1[4];
+	const uint32_t *kp = (uint32_t *) expandedKey;
+	state_in(b0, in);
+
+	round(fwd_rnd, b1, b0, kp);
+	round(fwd_rnd, b0, b1, kp + 1 * N_COLS);
+	round(fwd_rnd, b1, b0, kp + 2 * N_COLS);
+	round(fwd_rnd, b0, b1, kp + 3 * N_COLS);
+	round(fwd_rnd, b1, b0, kp + 4 * N_COLS);
+	round(fwd_rnd, b0, b1, kp + 5 * N_COLS);
+	round(fwd_rnd, b1, b0, kp + 6 * N_COLS);
+	round(fwd_rnd, b0, b1, kp + 7 * N_COLS);
+	round(fwd_rnd, b1, b0, kp + 8 * N_COLS);
+	round(fwd_rnd, b0, b1, kp + 9 * N_COLS);
+
+	state_out(out, b0);
+}
+
+static void xor_blocks(uint8_t *a, const uint8_t *b) {
+	U64(a)[0] ^= U64(b)[0];
+	U64(a)[1] ^= U64(b)[1];
+}
+
 // Generates as many random math operations as possible with given latency and ALU restrictions
 int v4_random_math_init(struct V4_Instruction* code, const uint64_t height, CryptoType cryptoType ) {
 	// MUL is 3 cycles, 3-way addition and rotations are 2 cycles, SUB/XOR are 1 cycle
@@ -3413,6 +3921,7 @@ bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner 
 	size_t i, j;
 	uint64_t *p = NULL;
 	int isLight = cpuMiner.type == TurtleCrypto ? 2 : 1;
+	oaes_ctx *aes_ctx = NULL;
 
 	static void (* const extra_hashes[4])(const void *, size_t, char *) =
 	{
@@ -3437,11 +3946,22 @@ bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner 
 	/* CryptoNight Step 2:  Iteratively encrypt the results from Keccak to fill
 	 * the 2MB large random access buffer.
 	 */
+#ifdef SOFT_AES
+	aes_ctx = (oaes_ctx *) oaes_alloc();
+	oaes_key_import_data(aes_ctx, cpuMiner.shs.hs.b, AES_KEY_SIZE);
+	for (i = 0; i < MEMORY / INIT_SIZE_BYTE; i++) {
+		for (j = 0; j < INIT_SIZE_BLK; j++)
+			aesb_pseudo_round(&text[AES_BLOCK_SIZE * j], &text[AES_BLOCK_SIZE * j], aes_ctx->key->exp_data);
+
+		memcpy(&cpuMiner.hp_state[i * INIT_SIZE_BYTE], text, INIT_SIZE_BYTE);
+	}
+#else
 	aes_expand_key(cpuMiner.shs.hs.b, expandedKey);
 	for (i = 0; i < MEMORY / getMemFactor(cpuMiner.type) / INIT_SIZE_BYTE; i++) {
 		aes_pseudo_round(text, text, expandedKey, INIT_SIZE_BLK);
 		memcpy(&cpuMiner.hp_state[i * INIT_SIZE_BYTE], text, INIT_SIZE_BYTE);
 	}
+#endif
 	U64(a)[0] = U64(&cpuMiner.shs.k[0])[0] ^ U64(&cpuMiner.shs.k[32])[0];
 	U64(a)[1] = U64(&cpuMiner.shs.k[0])[1] ^ U64(&cpuMiner.shs.k[32])[1];
 	U64(b)[0] = U64(&cpuMiner.shs.k[16])[0] ^ U64(&cpuMiner.shs.k[48])[0];
@@ -3457,7 +3977,11 @@ bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner 
 	// the useAes test is only performed once, not every iteration.
 	for (i = 0; i < ITER / getIterationFactor(cpuMiner.type) / 2; i++) {
 		pre_aes();
+#ifdef SOFT_AES
+		aesb_single_round((uint8_t *) &_c, (uint8_t *) &_c, (uint8_t *) &_a);
+#else
 		_c = _mm_aesenc_si128(_c, _a);
+#endif
 		post_aes();
 	}
 
@@ -3465,11 +3989,21 @@ bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner 
 	 * of AES encryption to mix the random data back into the 'text' buffer.  'text'
 	 * was originally created with the output of Keccak1600. */
 	memcpy(text, cpuMiner.shs.init, INIT_SIZE_BYTE);
+#ifdef SOFT_AES
+	oaes_key_import_data(aes_ctx, &cpuMiner.shs.hs.b[32], AES_KEY_SIZE);
+	for (i = 0; i < MEMORY / getMemFactor(cpuMiner.type) / INIT_SIZE_BYTE; i++) {
+		for (j = 0; j < INIT_SIZE_BLK; j++) {
+			xor_blocks(&text[j * AES_BLOCK_SIZE], &php_state[i * INIT_SIZE_BYTE + j * AES_BLOCK_SIZE]);
+			aesb_pseudo_round(&text[AES_BLOCK_SIZE * j], &text[AES_BLOCK_SIZE * j], aes_ctx->key->exp_data);
+		}
+	}
+#else
 	aes_expand_key(&cpuMiner.shs.hs.b[32], expandedKey);
 	for (i = 0; i < MEMORY / getMemFactor(cpuMiner.type) / INIT_SIZE_BYTE; i++) {
 		// add the xor to the pseudo round
 		aes_pseudo_round_xor(text, text, expandedKey, &php_state[i * INIT_SIZE_BYTE], INIT_SIZE_BLK);
 	}
+#endif
 
 	/* CryptoNight Step 5:  Apply Keccak to the state again, and then
 	 * use the resulting data to select which of four finalizer
