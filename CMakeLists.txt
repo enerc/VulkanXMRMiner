@@ -43,12 +43,16 @@ endif()
 
 if (SOFT_AES)
 	message("Build without aesi-ni and without avx")
-	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSOFT_AES " CACHE STRING "compile flags" FORCE)
-	set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DSOFT_AES -march=${ARCH}" CACHE STRING "compile flags" FORCE)
-	set(CMAKE_C_FLAGS_RELEASE "-O1 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
-	# if not build specified
-	set(CMAKE_CXX_FLAGS "-O1 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
-	set(CMAKE_C_FLAGS "-O1 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+	if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+		set(CMAKE_CXX_FLAGS_RELEASE "-g3 -DSOFT_AES -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+		set(CMAKE_C_FLAGS_RELEASE "-g3 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+	else()
+		set(CMAKE_CXX_FLAGS_RELEASE "-O1 -DSOFT_AES -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+		set(CMAKE_C_FLAGS_RELEASE "-O1 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+		# if not build specified
+		set(CMAKE_CXX_FLAGS "-O1 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+		set(CMAKE_C_FLAGS "-O1 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+	endif()
 endif()
 	
 # Add Include/Lib (Windows) and include/lib (Linux)
