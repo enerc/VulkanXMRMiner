@@ -71,6 +71,7 @@ cmake is required to perform the build. Set environment variable VULKAN_SDK for 
 > cmake  -DWIN32=1 ..<br/>
 >For Linux<br/>
 > cmake ..<br/>
+> use cmake -DSOFT_AES=1 .. for non aes-ni processors
 
 Extract vulkanXMRMiner.zip or vulkanXMRMiner.tgz and start the miner.
 
