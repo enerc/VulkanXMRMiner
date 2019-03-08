@@ -3058,6 +3058,8 @@ static void check_data(size_t* data_index, const size_t bytes_needed, int8_t* da
 	}
 }
 
+#ifdef SOFT_AES
+
 static OAES_RET oaes_key_destroy(oaes_key ** key) {
 	if ( NULL == *key)
 		return OAES_RET_SUCCESS;
@@ -3561,7 +3563,7 @@ static void xor_blocks(uint8_t *a, const uint8_t *b) {
 	U64(a)[0] ^= U64(b)[0];
 	U64(a)[1] ^= U64(b)[1];
 }
-
+#endif
 // Generates as many random math operations as possible with given latency and ALU restrictions
 int v4_random_math_init(struct V4_Instruction* code, const uint64_t height, CryptoType cryptoType ) {
 	// MUL is 3 cycles, 3-way addition and rotations are 2 cycles, SUB/XOR are 1 cycle
@@ -3921,7 +3923,6 @@ bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner 
 	size_t i, j;
 	uint64_t *p = NULL;
 	int isLight = cpuMiner.type == TurtleCrypto ? 2 : 1;
-	oaes_ctx *aes_ctx = NULL;
 
 	static void (* const extra_hashes[4])(const void *, size_t, char *) =
 	{
@@ -3947,6 +3948,7 @@ bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner 
 	 * the 2MB large random access buffer.
 	 */
 #ifdef SOFT_AES
+	oaes_ctx *aes_ctx = NULL;
 	aes_ctx = (oaes_ctx *) oaes_alloc();
 	oaes_key_import_data(aes_ctx, cpuMiner.shs.hs.b, AES_KEY_SIZE);
 	for (i = 0; i < MEMORY / INIT_SIZE_BYTE; i++) {
