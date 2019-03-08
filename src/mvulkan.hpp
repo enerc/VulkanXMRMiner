@@ -25,5 +25,5 @@ VkPipeline loadShader(VkDevice vkDevice, VkPipelineLayout pipelineLayout,VkShade
 void prepareGPUConstants();
 void shaderStats(VkDevice vkDevice,VkPipeline shader);
 int32_t getSubGroupSize(int index);
-
+uint32_t getBufferMemoryRequirements(VkDevice vkDevice,VkBuffer b);
 #endif /* MVULKAN_HPP_ */

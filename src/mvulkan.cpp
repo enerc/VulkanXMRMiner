@@ -529,3 +529,9 @@ int32_t getSubGroupSize(int index) {
 
 	return subgroupProperties.subgroupSize;
 }
+
+uint32_t getBufferMemoryRequirements(VkDevice vkDevice,VkBuffer b) {
+	VkMemoryRequirements req;
+	vkGetBufferMemoryRequirements(vkDevice,b,&req);
+	return req.alignment;
+}

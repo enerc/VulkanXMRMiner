@@ -61,6 +61,11 @@ static bool hasHighMemory(VulkanMiner &vulkanMiner) {
 	return  vulkanMiner.threads[getCurrentIndex()] > vulkanMiner.scratchSplit[getCurrentIndex()];
 }
 
+uint64_t alignBuffer(uint64_t size, uint64_t align) {
+	if (align == 1) return size;
+	else return (size+align-1)&(~(align-1));
+}
+
 void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMiner, uint32_t threads, uint32_t local_size_cn1, uint32_t cu, int deviceId, int index) {
 	uint32_t computeQueueFamillyIndex = getComputeQueueFamillyIndex(deviceId);
 	uint32_t memFactor = getMemFactor(getCryptoType(1));
@@ -87,9 +92,25 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 	vulkanMiner.scratchpadSize[1] = 2 * 1024 * 1024 / memFactor;
 	vulkanMiner.scratchpadsSize1 = vulkanMiner.threads[0]  > vulkanMiner.scratchSplit[0] ? vulkanMiner.scratchSplit[0] * vulkanMiner.scratchpadSize[0] : (uint64_t) vulkanMiner.threads[0] * vulkanMiner.scratchpadSize[0];
 	vulkanMiner.scratchpadsSize2 = (uint64_t) vulkanMiner.threads[0] * vulkanMiner.scratchpadSize[0] - vulkanMiner.scratchpadsSize1 + 64;
-	vulkanMiner.debugSize = 256 * sizeof(uint64_t);
-	vulkanMiner.local_memory_size = vulkanMiner.scratchpadsSize1 + vulkanMiner.scratchpadsSize2 + vulkanMiner.stateSize * maxThreads + 4L * sizeof(int) * (maxThreads + 2L);
-	vulkanMiner.shared_memory_size = sizeof(Params) + sizeof(GpuConstants) + vulkanMiner.inputsSize + vulkanMiner.outputSize * sizeof(int) + vulkanMiner.debugSize;
+
+	VkDeviceMemory tmpMem = allocateGPUMemory(vulkanMiner.deviceId, vulkanMiner.vkDevice, 1024, true);
+	VkBuffer tmpBuf = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, tmpMem, 256, 0);
+	uint32_t alignment = getBufferMemoryRequirements(vulkanMiner.vkDevice,tmpBuf);
+	vkDestroyBuffer(vulkanMiner.vkDevice,tmpBuf,nullptr);
+	vkFreeMemory(vkDevice , tmpMem, NULL);
+	
+	vulkanMiner.scratchpadsSize1 = alignBuffer(vulkanMiner.scratchpadsSize1,alignment);
+	vulkanMiner.scratchpadsSize2 = alignBuffer(vulkanMiner.scratchpadsSize2,alignment);
+	vulkanMiner.debugSize = alignBuffer(256 * sizeof(uint64_t),alignment);
+	vulkanMiner.local_memory_size = vulkanMiner.scratchpadsSize1 +
+			vulkanMiner.scratchpadsSize2 +
+			alignBuffer(vulkanMiner.stateSize * maxThreads,alignment) +
+			alignBuffer(4L * sizeof(int) * (maxThreads + 2L),alignment);
+	vulkanMiner.shared_memory_size = alignBuffer(sizeof(Params),alignment) +
+			alignBuffer(sizeof(GpuConstants),alignment) +
+			alignBuffer(vulkanMiner.inputsSize,alignment) +
+			alignBuffer(vulkanMiner.outputSize * sizeof(int),alignment)+
+			alignBuffer(vulkanMiner.debugSize,alignment);
 
 	vulkanMiner.gpuLocalMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.local_memory_size, true);
 	vulkanMiner.gpuSharedMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.shared_memory_size, false);
@@ -102,22 +123,22 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 	vulkanMiner.gpu_scratchpadsBuffer2 = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuLocalMemory, vulkanMiner.scratchpadsSize2, o);
 	o += vulkanMiner.scratchpadsSize2;
 	vulkanMiner.gpu_statesBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuLocalMemory, vulkanMiner.stateSize * maxThreads, o);
-	o += vulkanMiner.stateSize * maxThreads;
+	o += alignBuffer(vulkanMiner.stateSize * maxThreads,alignment);
 	vulkanMiner.gpu_branchesBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuLocalMemory, 4 * sizeof(int) * (maxThreads + 2), o);
-	o += 4 * sizeof(int) * (maxThreads + 2);
+	o += alignBuffer(4 * sizeof(int) * (maxThreads + 2),alignment);
 
 	// create the CPU shared buffers
 	o = 0;
 	vulkanMiner.gpu_params = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, sizeof(Params), o);
-	o += sizeof(Params);
+	o += alignBuffer(sizeof(Params),alignment);
 	vulkanMiner.gpu_constants = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, sizeof(GpuConstants), o);
-	o += sizeof(GpuConstants);
+	o += alignBuffer(sizeof(GpuConstants),alignment);
 	vulkanMiner.gpu_inputsBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.inputsSize, o);
-	o += vulkanMiner.inputsSize;
+	o += alignBuffer(vulkanMiner.inputsSize,alignment);
 	vulkanMiner.gpu_outputBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.outputSize * sizeof(int), o);
-	o += vulkanMiner.outputSize * sizeof(int);
+	o += alignBuffer(vulkanMiner.outputSize * sizeof(int),alignment);
 	vulkanMiner.gpu_debugBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.debugSize, o);
-	o += vulkanMiner.debugSize;
+	o += alignBuffer(vulkanMiner.debugSize,alignment);
 
 	vulkanMiner.pipelineLayout = bindBuffers(vulkanMiner.vkDevice, vulkanMiner.descriptorSet,vulkanMiner.descriptorPool,vulkanMiner.descriptorSetLayout,
 			vulkanMiner.gpu_scratchpadsBuffer1, vulkanMiner.gpu_scratchpadsBuffer2, vulkanMiner.gpu_statesBuffer,
