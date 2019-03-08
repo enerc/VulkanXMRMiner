@@ -99,7 +99,7 @@ uint64_t getMemorySize(int index) {
 	for (uint32_t k = 0; k < properties.memoryTypeCount; k++) {
 		VkMemoryType t = properties.memoryTypes[k];
 		VkMemoryHeap h = properties.memoryHeaps[k];
-		if (t.propertyFlags== VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)
+		if ((t.propertyFlags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)!=0)
 			return h.size / 1024 / 1024;
 	}
 	return 0;
