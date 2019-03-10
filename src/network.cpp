@@ -648,7 +648,7 @@ uint32_t getVariant() {
 			return 4;
 	}
 	if (cryptoType[current_index] == MoneroCrypto) {
-		if (major_version == 11)
+		//if (major_version == 11)
 			return 4;			// CryptonightR
 	}
 
