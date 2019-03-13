@@ -287,7 +287,7 @@ static bool decodeHeight(const char *msg) {
 
 	int i = 0;
 	char tmp[20];
-	while (*loc != '"') {
+	while (*loc >= '0' && *loc <= '9' && i<20) {
 		tmp[i] = *loc;
 		i++;
 		loc++;
