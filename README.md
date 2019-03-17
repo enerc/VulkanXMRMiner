@@ -109,7 +109,7 @@ Vega56 1500/1075&nbsp;: 14 070 H/s on Windows 10<br />
 </span>
 
 # Dev fee
-Building and maintaining a miner programm is a significant effort :stuck_out_tongue:. Miner will mine on fee pool one minute every one hour and 40 minutes on avergae. (1% of the time).
+Building and maintaining a miner programm is a significant effort :stuck_out_tongue:. Miner will mine on fee pool one minute every one hour and 40 minutes on average. (1% of the time).
 
 You are welcomed to make a donation:<br/>
 XMR : 4AZSfpPFsLEgxpBVmNdoysYERDQiGu7daKB2WtWgKK1AGqeJBhRp4ZNjVPMARyoSpPb3WkGsQ7p5tKvKex9eJpFqRJQXvQZ
