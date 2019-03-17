@@ -27,6 +27,7 @@
 #include "config.hpp"
 #include "spirv.hpp"
 #include "log.hpp"
+#include "miner.hpp"
 
 using namespace std;
 
@@ -100,7 +101,7 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 	const int o = hi ? 2 : 1;
 	s << "#version 460\n";
 	s << "#extension GL_ARB_gpu_shader_int64 : require\n";
-	s << "layout(binding = 0) buffer scratchpadsBuffer1 { uvec4 scratchpad1[]; };layout(binding = 1) buffer scratchpadsBuffer2 { uvec4 scratchpad2[]; };layout(binding = 2) buffer statesBuffer { uint64_t states[]; };layout(binding = 4) buffer Params { uint64_t target;uint memorySize;uint global_work_offset;uint iterations;uint mask;uint threads;uint scratchpatSplit;};layout(binding = 5) buffer constants{uint AES0_C[256];};layout(binding = 6) buffer inputsBuffer {uint64_t inputs[];};\n";
+	s << "layout(binding = 0) buffer scratchpadsBuffer1 { uvec4 scratchpad1[]; };layout(binding = 1) buffer scratchpadsBuffer2 { uvec4 scratchpad2[]; };layout(binding = 2) buffer statesBuffer { uint64_t states[]; };layout(binding = 4) buffer Params { uint64_t target;uint memorySize;uint global_work_offset;uint iterations;uint mask;uint threads;uint scratchpadSplit;};layout(binding = 5) buffer constants{uint AES0_C[256];};layout(binding = 6) buffer inputsBuffer {uint64_t inputs[];};\n";
 	s << "layout (local_size_x = " << localSize << ", local_size_y = 1) in;\n";
 	s << "shared uint AES0[256], AES1[256], AES2[256], AES3[256];\n";
 	s << "#define INDEX0  (scratchpadOffset + ((idx0 >> 4)))\n";
@@ -108,10 +109,6 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 	s << "#define INDEX2  (scratchpadOffset + ((idx0 >> 4) ^ 2))\n";
 	s << "#define INDEX3  (scratchpadOffset + ((idx0 >> 4) ^ 3))\n";
 	s << "#define BYTE(x,b) bitfieldExtract(x,8*(b),8)\n";
-	if (light)
-		s << "#define SCRATCHPAD_SPLIT 3584\n";
-	else
-		s << "#define SCRATCHPAD_SPLIT 1792\n";
 	s << "uint rotate32(uint x, uint c) {return (x << c) | (x >> (32-c));}\n";
 	s << "uint64_t mul_hi64(uint64_t x, uint64_t y) {uint64_t x0 = x & 0xffffffffUL;uint64_t x1 = x >> 32;uint64_t y0 = y & 0xffffffffUL;uint64_t y1 = y >> 32;uint64_t z0 = x0*y0;uint64_t t = x1*y0 + (z0 >> 32);uint64_t z1 = t & 0xffffffffUL;uint64_t z2 = t >> 32;z1 = x0*y1 + z1;return x1*y1 + z2 + (z1 >> 32);}\n";
 	s << "void main() {\n";
@@ -123,7 +120,7 @@ void buildCryptonightR(const struct V4_Instruction* code, bool hi, bool light, i
 		s << "uint r0,r1,r2,r3,r4,r5,r6,r7,r8;\n";
 	s << "const uint lIdx = gl_LocalInvocationID.x;\n";
 	s << "const uint gIdx = gl_GlobalInvocationID.x";
-	if (hi) s << " + SCRATCHPAD_SPLIT";
+	if (hi) s << " + scratchpadSplit";
 	s << ";\n";
 	s << "for(uint i = lIdx ; i < 256; i += " << localSize << ") {const uint tmp = AES0_C[i];AES0[i] = tmp;AES1[i] = rotate32(tmp, 8U);AES2[i] = rotate32(tmp, 16U);AES3[i] = rotate32(tmp, 24U);}\n";
 	s << "memoryBarrierShared();\n";

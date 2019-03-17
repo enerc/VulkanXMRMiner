@@ -426,7 +426,7 @@ typedef struct Params {
 	uint32_t iterations;
 	uint32_t mask;
 	uint32_t threads;
-	uint32_t scratchpatSplit;
+	uint32_t scratchpadSplit;
 } Params;
 
 

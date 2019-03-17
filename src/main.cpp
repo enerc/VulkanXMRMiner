@@ -127,6 +127,7 @@ int main(int argc, char **argv) {
 	prepareGPUConstants();
 
 	vulkanInit();
+	cout << "Driver API version " << getVulkanVersion() << "\n";
 
 	while (getVariant() == 0) {
 		cout << "Waiting for pool to send blob....\n";

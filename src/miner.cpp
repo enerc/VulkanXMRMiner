@@ -90,8 +90,13 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 	vulkanMiner.scratchSplit[1] = SCRATCHPAD_SPLIT * memFactor;
 	vulkanMiner.scratchpadSize[0] = 2 * 1024 * 1024 / vulkanMiner.memFactor;
 	vulkanMiner.scratchpadSize[1] = 2 * 1024 * 1024 / memFactor;
-	vulkanMiner.scratchpadsSize1 = vulkanMiner.threads[0]  > vulkanMiner.scratchSplit[0] ? vulkanMiner.scratchSplit[0] * vulkanMiner.scratchpadSize[0] : (uint64_t) vulkanMiner.threads[0] * vulkanMiner.scratchpadSize[0];
-	vulkanMiner.scratchpadsSize2 = (uint64_t) vulkanMiner.threads[0] * vulkanMiner.scratchpadSize[0] - vulkanMiner.scratchpadsSize1 + 64;
+	if (vulkanMiner.threads[0]  > vulkanMiner.scratchSplit[0]) {
+		vulkanMiner.scratchpadsSize1 = (uint64_t) vulkanMiner.threads[0] * vulkanMiner.scratchpadSize[0]/2;
+		vulkanMiner.scratchpadsSize2 = (uint64_t) vulkanMiner.threads[0] * vulkanMiner.scratchpadSize[0]/2;
+	} else {
+		vulkanMiner.scratchpadsSize1 = (uint64_t) vulkanMiner.threads[0] * vulkanMiner.scratchpadSize[0];
+		vulkanMiner.scratchpadsSize2 = 64;
+	}
 
 	VkDeviceMemory tmpMem = allocateGPUMemory(vulkanMiner.deviceId, vulkanMiner.vkDevice, 1024, true);
 	VkBuffer tmpBuf = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, tmpMem, 256, 0);
@@ -213,7 +218,7 @@ static void getParams(VulkanMiner &vulkanMiner,Params	&params ) {
 	params.iterations = 524288 / getIterationFactor(getCryptoType(getCurrentIndex()));
 	params.mask = 2097136 / getMemFactor(getCryptoType(getCurrentIndex()));
 	params.threads = vulkanMiner.threads[getCurrentIndex()];
-	params.scratchpatSplit = vulkanMiner.scratchSplit[getCurrentIndex()];
+	params.scratchpadSplit = vulkanMiner.threads[getCurrentIndex()] / (hasHighMemory(vulkanMiner) ? 2 : 1);
 	if (vulkanMiner.cpuMiner.type == TurtleCrypto) {
 		params.mask = 0x1FFF0;
 	}
@@ -290,13 +295,12 @@ static void createCommandBuffer(VulkanMiner &vulkanMiner) {
 	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
 
 	if (hasHighMemory(vulkanMiner)) {
-		uint32_t thrs = vulkanMiner.groups[current_index]*(vulkanMiner.local_size_cn1 == 8 ? 2 : 1);
-		uint32_t lowPart = thrs  > vulkanMiner.scratchSplit[getCurrentIndex()]/vulkanMiner.local_size_cn1 ?  vulkanMiner.scratchSplit[getCurrentIndex()]/vulkanMiner.local_size_cn1 : thrs ;
+		uint32_t cnt = vulkanMiner.groups[current_index]*(vulkanMiner.local_size_cn1 == 8 ? 2 : 1);
 		vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
 		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1);
-		vkCmdDispatch(vulkanMiner.vkCommandBuffer, lowPart , 1, 1);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, cnt/2 , 1, 1);
 		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1b);
-		vkCmdDispatch(vulkanMiner.vkCommandBuffer, thrs - lowPart, 1, 1);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, cnt/2, 1, 1);
 	} else {
 		vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
 		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1);

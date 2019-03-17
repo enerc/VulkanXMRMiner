@@ -25,6 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <cstring>
 #include <vector>
 #include <iostream>
+#include <sstream>
 
 
 #include "mvulkan.hpp"
@@ -97,7 +98,7 @@ uint64_t getMemorySize(int index) {
 		VkMemoryType t = properties.memoryTypes[k];
 		VkMemoryHeap h = properties.memoryHeaps[k];
 		if ((t.propertyFlags&VK_MEMORY_HEAP_DEVICE_LOCAL_BIT)!=0)
-			return h.size / 1024 / 1024;
+			return h.size / 1024L / 1024L;
 	}
 	return 0;
 }
@@ -217,6 +218,9 @@ VkCommandBuffer createCommandBuffer(VkDevice vkDevice,VkCommandPool commandPool)
 }
 
 VkBuffer createBuffer(VkDevice vkDevice,uint32_t computeQueueFamillyIndex,VkDeviceMemory memory,VkDeviceSize bufferSize, VkDeviceSize offset) {
+	// 4Gb limit on AMD and Nvidia
+	if (bufferSize >= 0x100000000) bufferSize=0xffffffff;
+
 	const VkBufferCreateInfo bufferCreateInfo = {
 		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
 		0,
@@ -531,4 +535,20 @@ uint32_t getBufferMemoryRequirements(VkDevice vkDevice,VkBuffer b) {
 	VkMemoryRequirements req;
 	vkGetBufferMemoryRequirements(vkDevice,b,&req);
 	return req.alignment;
+}
+
+static void extractVersion(uint32_t version, uint32_t &major, uint32_t &minor, uint32_t &patch) {
+    major = version >> 22;
+    minor = (version >> 12) & 0x3ff;
+    patch = version & 0xfff;
+}
+
+std::string getVulkanVersion() {
+	VkPhysicalDeviceProperties physicalDeviceProperties;
+	vkGetPhysicalDeviceProperties(physicalDevices[0],&physicalDeviceProperties);
+	uint32_t major, minor, patch;
+	extractVersion(physicalDeviceProperties.apiVersion,major, minor, patch);
+	ostringstream s;
+	s << major << "." << minor << "." << patch;
+	return s.str();
 }
