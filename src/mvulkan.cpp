@@ -52,18 +52,15 @@ int vulkanInit(){
 	    VK_API_VERSION_1_0
 	};
 
-	std::vector<const char*> enabledInstanceLayers;
-	std::vector<const char*> enabledInstanceExtensions;
-
 	const VkInstanceCreateInfo instanceCreateInfo = {
-	    VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,								// stype
-	    0,																	// pNext
-	    0,																	// flags
-	    &applicationInfo,													// pApplicationInfo
-		static_cast<uint32_t>(enabledInstanceLayers.size()),				// enabledLayerCount
-		&enabledInstanceLayers[0],											// ppEnabledLayerNames
-		static_cast<uint32_t>(enabledInstanceExtensions.size()),			// enabledExtensionCount
-		&enabledInstanceExtensions[0]										// ppEnabledExtensionNames
+		VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,								// stype
+		0,																	// pNext
+		0,																	// flags
+		&applicationInfo,													// pApplicationInfo
+		0,																	// enabledLayerCount
+		nullptr,															// ppEnabledLayerNames
+		0,																	// enabledExtensionCount
+		nullptr 															// ppEnabledExtensionNames
 	};
 
 	CHECK_RESULT(vkCreateInstance(&instanceCreateInfo, 0, &instance),"vkCreateInstance");
