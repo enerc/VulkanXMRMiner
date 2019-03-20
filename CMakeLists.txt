@@ -43,6 +43,7 @@ endif()
 
 if (SOFT_AES)
 	message("Build without aesi-ni and without avx")
+	SET(ARCH core2)
 	if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 		set(CMAKE_CXX_FLAGS_RELEASE "-g3 -DSOFT_AES -march=${ARCH}" CACHE STRING "compile flags" FORCE)
 		set(CMAKE_C_FLAGS_RELEASE "-g3 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
