@@ -62,6 +62,8 @@ static const char *START_WHITE = "\e[39m";
 #define THREAD_HANDLE pthread_t
 #endif
 
+static 	VulkanMiner miners[MAX_GPUS];
+
 #ifdef __MINGW32__
 int getKey() {
 	if(kbhit()) return getch();
@@ -135,20 +137,23 @@ int main(int argc, char **argv) {
 	}
 	cpuMiner.variant = getVariant();
 	cout << "Using XMR Variant: ";
-	if (cpuMiner.variant != 4)
-		cout <<  cpuMiner.variant << "\n";
-	else
+	if (cpuMiner.variant == 4)
 		cout << (cpuMiner.type == MoneroCrypto ? "cn/r\n" : "cn/wow\n");
+	else if (cpuMiner.variant == 0x100)
+		cout << "KangarooTwelve\n";
+	else
+		cout <<  cpuMiner.variant << "\n";
 
 	THREAD_HANDLE threads[MAX_GPUS];
-	VulkanMiner miners[MAX_GPUS];
 	for (int i = 0; i < config.nbGpus; i++) {
 		char deviceName[256];
 		int devId = config.gpus[i].index;
 		getDeviceName(devId,deviceName);
 		registerGpuName(i,deviceName);
 		VkDevice vkDevice = createDevice(devId, getComputeQueueFamillyIndex(devId));
-		initVulkanMiner(miners[i], vkDevice, cpuMiner, config.gpus[i].cu * config.gpus[i].factor, config.gpus[i].worksize, config.gpus[i].cu, devId, i);
+		// to be compatible with factor=256 in vulkan prog
+		if (cpuMiner.variant == 0x100) config.gpus[i].factor = 16;
+		initVulkanMiner(miners[i], vkDevice, cpuMiner, config.gpus[i].cu * config.gpus[i].factor, config.gpus[i].worksize, config.gpus[i].cu, config.gpus[i].chunk2, devId, i);
 		loadSPIRV(miners[i]);
 #ifdef __MINGW32__
 		DWORD ThreadId;
@@ -167,6 +172,7 @@ int main(int argc, char **argv) {
 
 	cout << "Mining started.... (Press q to stop)\n";
 	cout << "[Time] 'Total H/s' 'Good shares'/'Invalid shares'/'Expired shares' [GPU] H/s 'good hashes'/'bad hashes' \n";
+	sleep(10);
 	bool quit = false;
 
 	float mHashrate[MAX_GPUS];
@@ -211,10 +217,20 @@ int main(int argc, char **argv) {
 				totalShares += getGoodHash(i);
 			setTotalShares(totalShares);
 
-			cout << START_LIGHT_GREEN << hashesPerSec << "H/s " << START_GREEN << totalShares << "/" << getInvalidShares() << "/" << getExpiredShares() << " ";
+			if (hashesPerSec < 1e4)
+				cout << START_LIGHT_GREEN << hashesPerSec << "H/s " << START_GREEN << totalShares << "/" << getInvalidShares() << "/" << getExpiredShares() << " ";
+			else if (hashesPerSec < 1e6)
+				cout << START_LIGHT_GREEN << hashesPerSec/1000 << "kH/s " << START_GREEN << totalShares << "/" << getInvalidShares() << "/" << getExpiredShares() << " ";
+			else
+				cout << START_LIGHT_GREEN << hashesPerSec/1000000 << "MH/s " << START_GREEN << totalShares << "/" << getInvalidShares() << "/" << getExpiredShares() << " ";
 			for (int i = 0; i < config.nbGpus; i++) {
 				setHashRate(i,mHashrate[i] / 1000.0);
-				cout << "[" << i << "]:" << (mHashrate[i] == 0 ? START_STUCKED : "") << (mHashrate[i] / 1000.0) << START_GREEN << "H/s " << getGoodHash(i) << "/" << getBadHash(i) << "  ";
+				if (mHashrate[i] < 1e7)
+					cout << "[" << i << "]:" << (mHashrate[i] == 0 ? START_STUCKED : "") << (mHashrate[i] / 1000.0) << START_GREEN << "H/s " << getGoodHash(i) << "/" << getBadHash(i) << "  ";
+				else if (mHashrate[i] < 1e9)
+					cout << "[" << i << "]:" << (mHashrate[i] == 0 ? START_STUCKED : "") << (mHashrate[i] / 1000000.0) << START_GREEN << "kH/s " << getGoodHash(i) << "/" << getBadHash(i) << "  ";
+				else
+					cout << "[" << i << "]:" << (mHashrate[i] == 0 ? START_STUCKED : "") << (mHashrate[i] / 1000000000.0) << START_GREEN << "Mh/s " << getGoodHash(i) << "/" << getBadHash(i) << "  ";
 			}
 			cout << START_WHITE << "\n";
 			loop = 1;
