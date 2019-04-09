@@ -22,7 +22,7 @@ void startNetworkBG();
 bool checkBlob(const unsigned char *blob);
 bool getStopRequested();
 void requestStop();
-uint32_t getRandomNonce(int gpuIndex);
+uint64_t getRandomNonce(int gpuIndex);
 uint32_t getVariant();
 int getInvalidShares();
 int getExpiredShares();

@@ -437,8 +437,11 @@ uint64_t getTarget() {
 		return 0;
 }
 
-uint32_t getRandomNonce(int gpuIndex) {
-	return gpuIndex * 5 * 3600 * 2000; // 5 hours at 2kH/s;
+uint64_t getRandomNonce(int gpuIndex) {
+	if (getVariant() != 0x100)
+		return gpuIndex * 5 * 3600 * 2000; // 5 hours at 2kH/s;
+	else
+		return uint64_t(gpuIndex * 5 * 3600 * 2000)*1000L*1000L; // 5 hours at 2GH/s;
 }
 
 bool connectToPool(int index) {
