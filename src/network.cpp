@@ -316,7 +316,7 @@ void getCurrentBlob(unsigned char *input, int *size) {
 
 void applyNonce(unsigned char *input, uint64_t nonce) {
 	// add the nonce starting at pos 39.
-	if (getVariant() == 0x100) {		// K12_nonce64
+	if (getVariant() == K12_ALGO) {		// K12_nonce64
 		*(uint64_t *) (input + NONCE_LOCATION) = nonce;
 	} else {
 		*(uint32_t *) (input + NONCE_LOCATION) = (uint32_t)(nonce & 0xffffffff);
@@ -438,10 +438,10 @@ uint64_t getTarget() {
 }
 
 uint64_t getRandomNonce(int gpuIndex) {
-	if (getVariant() != 0x100)
+	if (getVariant() != K12_ALGO)
 		return gpuIndex * 5 * 3600 * 2000; // 5 hours at 2kH/s;
 	else
-		return uint64_t(gpuIndex * 5 * 3600 * 2000)*1000L*1000L; // 5 hours at 2GH/s;
+		return uint64_t((uint64_t)gpuIndex * 5L * 3600L * 2000L)*1000L*1000L; // 5 hours at 2GH/s;
 }
 
 bool connectToPool(int index) {
@@ -555,7 +555,7 @@ static void checkInvalidShare(const char *msg) {
 	loc = strstr(msg, needle3);
 	if (loc != NULL) {
 		invalidShares++;
-		successiveInvalidShares++;
+		//successiveInvalidShares++;
 		cout << START_RED << "Result rejected by the pool.\n" << START_WHITE;
 		return;
 	}
@@ -646,7 +646,7 @@ uint32_t getVariant() {
 		if (cryptoType[current_index] != AeonCrypto)
 			return 2;			// CN V8
 		else
-			return 0x100;		// K12
+			return K12_ALGO;		// K12
 	}
 	if (major_version == 9)
 		return 2;			// CN V8
@@ -679,7 +679,7 @@ static void submitResult(int64_t nonce, const unsigned char *result, int index) 
 	resultHex[64] = 0;
 
 	unsigned char nonceHex[17];
-	if (getVariant() == 0x100) {		// K12_nonce64
+	if (getVariant() == K12_ALGO) {		// K12_nonce64
 		bin2hex((const unsigned char*) &nonce,8, nonceHex);
 		nonceHex[16] = 0;
 	} else {

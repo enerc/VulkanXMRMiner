@@ -3994,15 +3994,14 @@ static void k12_round(uint64_t *state){
 }
 
 bool k12_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuIndex, uint64_t height) {
-	memset(hash,0,200);
+	memset(hash,0,200); // 25 longs
 	memcpy(hash,data,length);
 	uint64_t *State = (uint64_t*)hash;
 	// padding.
 	State[10] ^= 0x700;
 	// Second bit of padding
 	State[20] |= 0x8000000000000000L;
-	//for (int i=0; i< 25; i++) printf("%lx ",State[i]);
-	//puts("");
+
 	k12_round(State);
 
 	const uint64_t hashVal = State[3];
@@ -4012,7 +4011,6 @@ bool k12_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner
 			sprintf(tmp,"GPU #%d",gpuIndex);
 			error("Hash rejected on ",tmp);
 			incBadHash(gpuIndex);
-			//exit(0);
 		}
 		return false;
 	} else

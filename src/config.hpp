@@ -9,6 +9,7 @@
 #define CONFIG_FILENAME "config.json"
 #define MAX_GPUS		32
 #define DEFAULT_CONSOLE_REFRESH_RATE	30
+#define K12_ALGO		0x100
 
 enum CryptoType {
 	MoneroCrypto,

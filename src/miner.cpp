@@ -190,7 +190,7 @@ static const char *getCN1SpirvName(VulkanMiner &vulkanMiner, bool highMemory) {
 				cn1_spirvname = vulkanMiner.local_size_cn1 == 8 ? "spirv/cn1_lm8.spv" : "spirv/cn1_lm16.spv";
 			break;
 		case 4:
-		case 0x100: // k12
+		case K12_ALGO: // k12
 			cn1_spirvname = getCryptonightRSpirVName(highMemory,vulkanMiner.local_size_cn1);
 			break;
 		default:
@@ -224,8 +224,8 @@ static void getParams(VulkanMiner &vulkanMiner,Params	&params ) {
 	if (vulkanMiner.cpuMiner.type == TurtleCrypto) {
 		params.mask = 0x1FFF0;
 	}
-	if (vulkanMiner.cpuMiner.type == AeonCrypto && getVariant() == 0x100) {
-		params.threads *= 16*4096;
+	if (vulkanMiner.cpuMiner.type == AeonCrypto && getVariant() == K12_ALGO) {
+		params.threads = vulkanMiner.groups[getCurrentIndex()]*256*4096;
 	}
 	params.chunk2 = vulkanMiner.chunk2;
 }
@@ -284,7 +284,7 @@ void loadSPIRV(VulkanMiner &vulkanMiner) {
 	vulkanMiner.pipeline_cn5 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn5.spv");
 	vulkanMiner.pipeline_cn6 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn6.spv");
 	vulkanMiner.pipeline_cn7 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn7.spv");
-	if (variant == 0x100)
+	if (vulkanMiner.cpuMiner.type == AeonCrypto)
 		vulkanMiner.pipeline_k12 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/k12.spv");
 	//shaderStats(vulkanMiner.vkDevice,vulkanMiner.pipeline_cn1); exit(0);
 }
@@ -308,7 +308,7 @@ static void createCommandBufferK12(VulkanMiner &vulkanMiner) {
 static void createCommandBuffer(VulkanMiner &vulkanMiner) {
 	int current_index = getCurrentIndex();
 
-	if (current_index == 0 && getVariant() == 0x100) {
+	if (current_index == 0 && getVariant() == K12_ALGO) {
 		createCommandBufferK12(vulkanMiner);
 	} else {
 		CHECK_RESULT(vkBeginCommandBuffer(vulkanMiner.vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
@@ -368,11 +368,11 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 	// process latest results while GPU is working
 	if (vulkanMiner.nrResults > 0) {
 		for (int i=0; i< vulkanMiner.nrResults && vulkanMiner.cnrSubmittedHeight == vulkanMiner.height; i++) {
-			unsigned char hash[256/8];			// 256 bits
+			unsigned char hash[200];
 			memcpy(vulkanMiner.noncedInput,vulkanMiner.originalInput,vulkanMiner.inputLen);
 			applyNonce(vulkanMiner.noncedInput, vulkanMiner.tmpResults[i]);
 			bool candidate;
-			if (getVariant() == 0x100)
+			if (getVariant() == K12_ALGO)
 				candidate = k12_slow_hash(vulkanMiner.noncedInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height);
 			else
 				candidate = cn_slow_hash(vulkanMiner.noncedInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height);
@@ -396,7 +396,7 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 	memcpy(&vulkanMiner.originalInput,&vulkanMiner.input,vulkanMiner.inputLen);
 }
 
-void reloadInput(VulkanMiner &vulkanMiner, int nonce) {
+void reloadInput(VulkanMiner &vulkanMiner, int64_t nonce) {
 	// get current blob to hash from network.
 	getCurrentBlob(vulkanMiner.input,&vulkanMiner.inputLen);
 	vulkanMiner.nonce = nonce;
@@ -463,7 +463,7 @@ void shutdownDevice(VulkanMiner &vulkanMiner) {
 	//vkFreeCommandBuffers(vulkanMiner.vkDevice,vulkanMiner.commandPool,1,&vulkanMiner.vkCommandBuffer);
 }
 
-void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &localSize, int  memFactor) {
+void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &localSize, int  memFactor,CryptoType type) {
 	uint64_t last=0;
 	VkCommandPool commandPool;
 	VkCommandBuffer vkCommandBuffer;
@@ -524,6 +524,8 @@ void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &
 			break;
 	}
 	cu = (i-1)/2;
+
+	if (type == AeonCrypto) cu *= 2;	// K12 performance
 
 	localSize = 8;
 	int mem = (getMemorySize(deviceId)/1024)*1024 - 128;
@@ -604,7 +606,7 @@ void *MinerThread(void *args)
 	miner.nrResults = 0;
 	miner.cnrHeight = 0;
 	int inputLen;
-	int nonce = getRandomNonce(miner.index);
+	int64_t nonce = getRandomNonce(miner.index);
 	getCurrentBlob(miner.input,&inputLen);
 	memcpy(&miner.originalInput,&miner.input,miner.inputLen);
 	miner.target = getTarget();
@@ -637,7 +639,7 @@ void *MinerThread(void *args)
 		}
 		minerIterate(miner);
 		hashRates[miner.index] = 1e9*(float)miner.threads[getCurrentIndex()] / (float)(now() - t0);
-		if (getVariant() == 0x100)
+		if (getVariant() == K12_ALGO)
 			hashRates[miner.index] *= 16*4096; // KangarooTwelve
 		t0 = now();
 	}

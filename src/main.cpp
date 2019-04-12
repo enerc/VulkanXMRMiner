@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
 	cout << "Using XMR Variant: ";
 	if (cpuMiner.variant == 4)
 		cout << (cpuMiner.type == MoneroCrypto ? "cn/r\n" : "cn/wow\n");
-	else if (cpuMiner.variant == 0x100)
+	else if (cpuMiner.variant == K12_ALGO)
 		cout << "KangarooTwelve\n";
 	else
 		cout <<  cpuMiner.variant << "\n";
@@ -152,7 +152,7 @@ int main(int argc, char **argv) {
 		registerGpuName(i,deviceName);
 		VkDevice vkDevice = createDevice(devId, getComputeQueueFamillyIndex(devId));
 		// to be compatible with factor=256 in vulkan prog
-		if (cpuMiner.variant == 0x100) config.gpus[i].factor = 16;
+		if (cpuMiner.variant == K12_ALGO) config.gpus[i].factor = 16;
 		initVulkanMiner(miners[i], vkDevice, cpuMiner, config.gpus[i].cu * config.gpus[i].factor, config.gpus[i].worksize, config.gpus[i].cu, config.gpus[i].chunk2, devId, i);
 		loadSPIRV(miners[i]);
 #ifdef __MINGW32__

@@ -309,7 +309,7 @@ select1:
 	cout << "Select a crypto:\n";
 	cout << " 0 for Monero\n";
 	cout << " 1 for Wownero\n";
-	cout << " 2 for Aeon,Bittorium - cryptonight light\n";
+	cout << " 2 for Aeon v7/v8 - cryptonight light or K12\n";
 	cout << " 3 for TurtleCoin\n";
 	cout << "Your crypto: ";
 	config.type = MoneroCrypto;
@@ -440,7 +440,7 @@ select4:
 	for (int i=0; i< nbDevices; i++ ) {
 		VkDevice d = createDevice(i,getComputeQueueFamillyIndex(i));
 		int cu,local_size,factor;
-		findBestSetting(d,i,cu,factor,local_size,config.memFactor);
+		findBestSetting(d,i,cu,factor,local_size,config.memFactor,config.type);
 		cout << "Card:" << i << "  " << cu << " Compute Units/Stream Multiprocessors";
 		cout << ", using factor " << factor << " (" << (factor*cu) << " threads)";
 		cout << ", local size " << local_size << "\n";
