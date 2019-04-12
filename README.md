@@ -21,7 +21,9 @@ Extract the zip file, and run miner.exe / miner.<br/>
 
 The binary glslangValidator.exe/glslangValidator is from the Vulkan SDK and is for CryptonightR to a compile new SPIR-V kernel at each new block.
 
-New in 0.2: Monitoring, hashrate seen by pool improved, turtlecoin and bittorium support, wownero v11 and v12 blocks.
+New in 0.2: Monitoring, hashrate seen by pool improved, turtlecoin and bittorium support, cn/wow.<br/>
+New in 0.3: cn/r<br/>
+New in 0.4: KangarooTwelve
 
 # Drivers installation
 On Windows, Vulkan should be provided with recent drivers for AMD and NVIDIA. On AMD only use <b>2018+ Adrenalin drivers</b>. Crimson drivers are too old.<br/>
@@ -101,6 +103,11 @@ Vega56 1500/1075&nbsp;: 1800 H/s on Windows 10<br />
 ## on CN Light V7 (Aeon)
 <span style="font-family: monospace;">
 Vega56 1500/1075&nbsp;: 3970 H/s on Windows 10<br />
+</span>
+
+## on KangarooTwelve (Aeon)
+<span style="font-family: monospace;">
+Vega56 1500Mhz&nbsp;: 950 MH/s<br />
 </span>
 
 ## on TurtleCoin
