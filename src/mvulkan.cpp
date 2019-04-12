@@ -175,8 +175,11 @@ VkDeviceMemory allocateGPUMemory(int index,  VkDevice vkDevice, const VkDeviceSi
 	}
 
 	VkResult ret = (memoryTypeIndex == VK_MAX_MEMORY_TYPES ? VK_ERROR_OUT_OF_HOST_MEMORY : VK_SUCCESS);
-	if (ret != VK_SUCCESS)
-		exitOnError("Cannot find GPU memory type... Bye!");
+	if (ret != VK_SUCCESS) {
+		cout << memorySize << " GPU bytes requested." << "\n";
+		cout << "Cannot allocated GPU memory type for GPU index " << index;
+		exitOnError("");
+	}
 
 	const VkMemoryAllocateInfo memoryAllocateInfo = {
 		VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,

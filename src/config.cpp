@@ -143,7 +143,8 @@ static string createJsonFromConfig() {
 		s << "    \"index\"    : \"" << config.gpus[i].index << "\",\n";
 		s << "    \"cu\"       : \"" << config.gpus[i].cu << "\",\n";
 		s << "    \"factor\"   : \"" << config.gpus[i].factor << "\",\n";
-		s << "    \"worksize\" : \"" << config.gpus[i].worksize << "\"\n";
+		s << "    \"worksize\" : \"" << config.gpus[i].worksize << "\",\n";
+		s << "    \"mem_chunk\": \"2\"\n";
 		s << "  }";
 		if (i< config.nbGpus -1) s << ",";
 		s << "  \n";
@@ -247,6 +248,16 @@ static void decodeConfig(const char *conf)  {
 		if (config.gpus[cardIndex].worksize != 8 && config.gpus[cardIndex].worksize != 16) {
 			exitOnError("unsupported worksize - only 8 and 16 are supported");
 		}
+		loc = getJSONEntryLocation(p,len,"mem_chunk",false);
+		if (loc != nullptr)
+			config.gpus[cardIndex].chunk2 = getIntProperty(loc);
+		else
+			config.gpus[cardIndex].chunk2 = 2;
+
+		if (config.gpus[cardIndex].chunk2 < 1 || config.gpus[cardIndex].chunk2 > 16) {
+			exitOnError("mem_chunk must be in 1..16 range");
+		}
+
 		p++;
 		while (*p != '}' && *p != 0) p++;
 
@@ -298,7 +309,7 @@ select1:
 	cout << "Select a crypto:\n";
 	cout << " 0 for Monero\n";
 	cout << " 1 for Wownero\n";
-	cout << " 2 for Aeon,Bittorium - cryptonight light\n";
+	cout << " 2 for Aeon v7/v8 - cryptonight light or K12\n";
 	cout << " 3 for TurtleCoin\n";
 	cout << "Your crypto: ";
 	config.type = MoneroCrypto;
@@ -429,7 +440,7 @@ select4:
 	for (int i=0; i< nbDevices; i++ ) {
 		VkDevice d = createDevice(i,getComputeQueueFamillyIndex(i));
 		int cu,local_size,factor;
-		findBestSetting(d,i,cu,factor,local_size,config.memFactor);
+		findBestSetting(d,i,cu,factor,local_size,config.memFactor,config.type);
 		cout << "Card:" << i << "  " << cu << " Compute Units/Stream Multiprocessors";
 		cout << ", using factor " << factor << " (" << (factor*cu) << " threads)";
 		cout << ", local size " << local_size << "\n";

@@ -97,7 +97,7 @@ static sem_t mutexQueue;
 static int tail;
 static int head;
 struct MsgResult {
-	int nonce;
+	int64_t nonce;
 	int cardIndex;
 	unsigned char hash[64];
 	unsigned char blob[MAX_BLOB_SIZE / 2];
@@ -314,9 +314,13 @@ void getCurrentBlob(unsigned char *input, int *size) {
 #endif
 }
 
-void applyNonce(unsigned char *input, int nonce) {
+void applyNonce(unsigned char *input, uint64_t nonce) {
 	// add the nonce starting at pos 39.
-	*(uint32_t *) (input + NONCE_LOCATION) = nonce;
+	if (getVariant() == K12_ALGO) {		// K12_nonce64
+		*(uint64_t *) (input + NONCE_LOCATION) = nonce;
+	} else {
+		*(uint32_t *) (input + NONCE_LOCATION) = (uint32_t)(nonce & 0xffffffff);
+	}
 }
 
 void registerPool(const char* hostname, int port, const char *_wallet, const char *_password, int index) {
@@ -433,8 +437,11 @@ uint64_t getTarget() {
 		return 0;
 }
 
-uint32_t getRandomNonce(int gpuIndex) {
-	return gpuIndex * 5 * 3600 * 2000; // 5 hours at 2kH/s;
+uint64_t getRandomNonce(int gpuIndex) {
+	if (getVariant() != K12_ALGO)
+		return gpuIndex * 5 * 3600 * 2000; // 5 hours at 2kH/s;
+	else
+		return uint64_t((uint64_t)gpuIndex * 5L * 3600L * 2000L)*1000L*1000L; // 5 hours at 2GH/s;
 }
 
 bool connectToPool(int index) {
@@ -548,7 +555,7 @@ static void checkInvalidShare(const char *msg) {
 	loc = strstr(msg, needle3);
 	if (loc != NULL) {
 		invalidShares++;
-		successiveInvalidShares++;
+		//successiveInvalidShares++;
 		cout << START_RED << "Result rejected by the pool.\n" << START_WHITE;
 		return;
 	}
@@ -635,8 +642,12 @@ uint32_t getVariant() {
 		else
 			return 1;
 	}
-	if (major_version == 8)
-		return 2;			// CN V8
+	if (major_version == 8) {
+		if (cryptoType[current_index] != AeonCrypto)
+			return 2;			// CN V8
+		else
+			return K12_ALGO;		// K12
+	}
 	if (major_version == 9)
 		return 2;			// CN V8
 	if (cryptoType[current_index] == WowneroCrypto) {
@@ -655,7 +666,7 @@ uint32_t getVariant() {
 	return 0;
 }
 
-static void submitResult(int nonce, const unsigned char *result, int index) {
+static void submitResult(int64_t nonce, const unsigned char *result, int index) {
 	if (connections[index] == 0)
 		return;	// connection lost
 
@@ -667,9 +678,15 @@ static void submitResult(int nonce, const unsigned char *result, int index) {
 	}
 	resultHex[64] = 0;
 
-	unsigned char nonceHex[9];
-	bin2hex((const unsigned char*) &nonce, 4, nonceHex);
-	nonceHex[8] = 0;
+	unsigned char nonceHex[17];
+	if (getVariant() == K12_ALGO) {		// K12_nonce64
+		bin2hex((const unsigned char*) &nonce,8, nonceHex);
+		nonceHex[16] = 0;
+	} else {
+		nonce &= 0xffffffff;
+		bin2hex((const unsigned char*) &nonce, 4, nonceHex);
+		nonceHex[8] = 0;
+	}
 
 	char msg[4096];
 	sprintf(msg, "{\"method\":\"submit\",\"params\":{\"id\":\"%s\",\"job_id\":\"%s\",\"nonce\":\"%s\",\"result\":\"%s\"},\"id\":1}\n", myIds[index], jobId, nonceHex, resultHex);
@@ -686,7 +703,7 @@ static void submitResult(int nonce, const unsigned char *result, int index) {
 	checkPoolResponds(index);
 }
 
-void notifyResult(int nonce, const unsigned char *hash, unsigned char *_blob, uint32_t height) {
+void notifyResult(int64_t nonce, const unsigned char *hash, unsigned char *_blob, uint32_t height) {
 #ifdef __MINGW32__
 	WaitForSingleObject(mutexQueue, INFINITE);
 #else

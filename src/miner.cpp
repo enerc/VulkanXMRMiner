@@ -66,13 +66,14 @@ uint64_t alignBuffer(uint64_t size, uint64_t align) {
 	else return (size+align-1)&(~(align-1));
 }
 
-void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMiner, uint32_t threads, uint32_t local_size_cn1, uint32_t cu, int deviceId, int index) {
+void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMiner, uint32_t threads, uint32_t local_size_cn1, uint32_t cu, uint32_t chunk2, int deviceId, int index) {
 	uint32_t computeQueueFamillyIndex = getComputeQueueFamillyIndex(deviceId);
 	uint32_t memFactor = getMemFactor(getCryptoType(1));
 	vulkanMiner.currentCrypto = getCryptoType(0);
 	vulkanMiner.vkDevice = vkDevice;
 	vulkanMiner.cpuMiner = cpuMiner;			// copy constructor
 	vulkanMiner.deviceId = deviceId;
+	vulkanMiner.chunk2 = chunk2;
 	vulkanMiner.threads[0] = threads;
 	vulkanMiner.threads[1] = threads*memFactor/getMemFactor(getCryptoType(0));
 	uint32_t maxThreads = vulkanMiner.threads[0] < vulkanMiner.threads[1] ? vulkanMiner.threads[1] : vulkanMiner.threads[0];
@@ -114,7 +115,7 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 	vulkanMiner.shared_memory_size = alignBuffer(sizeof(Params),alignment) +
 			alignBuffer(sizeof(GpuConstants),alignment) +
 			alignBuffer(vulkanMiner.inputsSize,alignment) +
-			alignBuffer(vulkanMiner.outputSize * sizeof(int),alignment)+
+			alignBuffer(vulkanMiner.outputSize * sizeof(int64_t),alignment)+
 			alignBuffer(vulkanMiner.debugSize,alignment);
 
 	vulkanMiner.gpuLocalMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.local_memory_size, true);
@@ -140,8 +141,8 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 	o += alignBuffer(sizeof(GpuConstants),alignment);
 	vulkanMiner.gpu_inputsBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.inputsSize, o);
 	o += alignBuffer(vulkanMiner.inputsSize,alignment);
-	vulkanMiner.gpu_outputBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.outputSize * sizeof(int), o);
-	o += alignBuffer(vulkanMiner.outputSize * sizeof(int),alignment);
+	vulkanMiner.gpu_outputBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.outputSize * sizeof(int64_t), o);
+	o += alignBuffer(vulkanMiner.outputSize * sizeof(int64_t),alignment);
 	vulkanMiner.gpu_debugBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.debugSize, o);
 	o += alignBuffer(vulkanMiner.debugSize,alignment);
 
@@ -189,6 +190,7 @@ static const char *getCN1SpirvName(VulkanMiner &vulkanMiner, bool highMemory) {
 				cn1_spirvname = vulkanMiner.local_size_cn1 == 8 ? "spirv/cn1_lm8.spv" : "spirv/cn1_lm16.spv";
 			break;
 		case 4:
+		case K12_ALGO: // k12
 			cn1_spirvname = getCryptonightRSpirVName(highMemory,vulkanMiner.local_size_cn1);
 			break;
 		default:
@@ -222,6 +224,10 @@ static void getParams(VulkanMiner &vulkanMiner,Params	&params ) {
 	if (vulkanMiner.cpuMiner.type == TurtleCrypto) {
 		params.mask = 0x1FFF0;
 	}
+	if (vulkanMiner.cpuMiner.type == AeonCrypto && getVariant() == K12_ALGO) {
+		params.threads = vulkanMiner.groups[getCurrentIndex()]*256*4096;
+	}
+	params.chunk2 = vulkanMiner.chunk2;
 }
 
 static void rebuildCryptonightRIfRequired(VulkanMiner &miner, bool reload)  {
@@ -263,7 +269,8 @@ static void rebuildCryptonightRIfRequired(VulkanMiner &miner, bool reload)  {
 
 // Load the code
 void loadSPIRV(VulkanMiner &vulkanMiner) {
-	if (getVariant() == 4)
+	int variant = getVariant();
+	if (variant == 4)
 		rebuildCryptonightRIfRequired(vulkanMiner, false);
 
 	vulkanMiner.variant = vulkanMiner.cpuMiner.variant;
@@ -277,55 +284,77 @@ void loadSPIRV(VulkanMiner &vulkanMiner) {
 	vulkanMiner.pipeline_cn5 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn5.spv");
 	vulkanMiner.pipeline_cn6 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn6.spv");
 	vulkanMiner.pipeline_cn7 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn7.spv");
+	if (vulkanMiner.cpuMiner.type == AeonCrypto)
+		vulkanMiner.pipeline_k12 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/k12.spv");
 	//shaderStats(vulkanMiner.vkDevice,vulkanMiner.pipeline_cn1); exit(0);
 }
 
-static void createCommandBuffer(VulkanMiner &vulkanMiner) {
-	int current_index = getCurrentIndex();
+// Specific command buffer for K12 algo (SHA3)
+static void createCommandBufferK12(VulkanMiner &vulkanMiner) {
 	CHECK_RESULT(vkBeginCommandBuffer(vulkanMiner.vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
 
 	// reset buffers
 	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn7);
 	vkCmdBindDescriptorSets(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipelineLayout, 0, 1, &vulkanMiner.descriptorSet, 0, 0);
 	vkCmdDispatch(vulkanMiner.vkCommandBuffer, 1, 1, 1);
-	vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
-	vulkanMiner.nonce += vulkanMiner.threads[current_index];			// nonce is incremented during those buffer reset
-
-	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn0);
-	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
-
-	if (hasHighMemory(vulkanMiner)) {
-		uint32_t cnt = vulkanMiner.groups[current_index]*(vulkanMiner.local_size_cn1 == 8 ? 2 : 1);
-		vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
-		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1);
-		vkCmdDispatch(vulkanMiner.vkCommandBuffer, cnt/2 , 1, 1);
-		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1b);
-		vkCmdDispatch(vulkanMiner.vkCommandBuffer, cnt/2, 1, 1);
-	} else {
-		vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
-		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1);
-		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index]*(vulkanMiner.local_size_cn1 == 8 ? 2 : 1), 1, 1);
-	}
 
 	vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
-	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn2);
-	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
-
-	vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
-	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn5);
-	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
-
-	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn6);
-	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
-
-	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn4);
-	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
-
-	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn3);
-	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
+	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_k12);
+	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[0], 1, 1);
 
 	CHECK_RESULT(vkEndCommandBuffer(vulkanMiner.vkCommandBuffer), "vkEndCommandBuffer");
+}
 
+static void createCommandBuffer(VulkanMiner &vulkanMiner) {
+	int current_index = getCurrentIndex();
+
+	if (current_index == 0 && getVariant() == K12_ALGO) {
+		createCommandBufferK12(vulkanMiner);
+	} else {
+		CHECK_RESULT(vkBeginCommandBuffer(vulkanMiner.vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
+
+		// reset buffers
+		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn7);
+		vkCmdBindDescriptorSets(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipelineLayout, 0, 1, &vulkanMiner.descriptorSet, 0, 0);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, 1, 1, 1);
+		vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
+		vulkanMiner.nonce += vulkanMiner.threads[current_index];			// nonce is incremented during those buffer reset
+
+		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn0);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index]*2, 1, 1);
+
+		if (hasHighMemory(vulkanMiner)) {
+			uint32_t cnt = vulkanMiner.groups[current_index]*(vulkanMiner.local_size_cn1 == 8 ? 2 : 1);
+			vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
+			vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1);
+			vkCmdDispatch(vulkanMiner.vkCommandBuffer, cnt/2 , 1, 1);
+			vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1b);
+			vkCmdDispatch(vulkanMiner.vkCommandBuffer, cnt/2, 1, 1);
+		} else {
+			vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
+			vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn1);
+			vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index]*(vulkanMiner.local_size_cn1 == 8 ? 2 : 1), 1, 1);
+		}
+
+		vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
+		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn2);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
+
+		vkCmdPipelineBarrier(vulkanMiner.vkCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &vulkanMiner.memoryBarrier, 0, nullptr, 0, nullptr);
+		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn5);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
+
+		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn6);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
+
+		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn4);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
+
+		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn3);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
+
+		CHECK_RESULT(vkEndCommandBuffer(vulkanMiner.vkCommandBuffer), "vkEndCommandBuffer");
+	}
 	vulkanMiner.commandBufferFilled = true;
 }
 
@@ -334,15 +363,19 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 		createCommandBuffer(vulkanMiner);
 
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO, 0, 0, 0, 0, 1, &vulkanMiner.vkCommandBuffer, 0, 0 };
-
 	CHECK_RESULT(vkQueueSubmit(vulkanMiner.queue, 1, &submitInfo, vulkanMiner.drawFence), "vkQueueSubmit");
 
 	// process latest results while GPU is working
 	if (vulkanMiner.nrResults > 0) {
 		for (int i=0; i< vulkanMiner.nrResults && vulkanMiner.cnrSubmittedHeight == vulkanMiner.height; i++) {
-			unsigned char hash[256/8];			// 256 bits
-			applyNonce(vulkanMiner.originalInput, vulkanMiner.tmpResults[i]);
-			bool candidate = cn_slow_hash(vulkanMiner.originalInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height);
+			unsigned char hash[200];
+			memcpy(vulkanMiner.noncedInput,vulkanMiner.originalInput,vulkanMiner.inputLen);
+			applyNonce(vulkanMiner.noncedInput, vulkanMiner.tmpResults[i]);
+			bool candidate;
+			if (getVariant() == K12_ALGO)
+				candidate = k12_slow_hash(vulkanMiner.noncedInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height);
+			else
+				candidate = cn_slow_hash(vulkanMiner.noncedInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height);
 			if (candidate)
 				notifyResult(vulkanMiner.tmpResults[i], hash, vulkanMiner.originalInput,vulkanMiner.height);
 		}
@@ -355,15 +388,15 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 		res = vkWaitForFences(vulkanMiner.vkDevice, 1, &vulkanMiner.drawFence, VK_TRUE, delay );
 	} while (res == VK_TIMEOUT);
 	vkResetFences(vulkanMiner.vkDevice, 1, &vulkanMiner.drawFence);
-	vulkanMiner.nrResults = (int) vulkanMiner.resultPtr[255];
+	vulkanMiner.nrResults = vulkanMiner.resultPtr[0] < vulkanMiner.outputSize ? vulkanMiner.resultPtr[0] : vulkanMiner.outputSize-1;
 	for (int i = 0; i < vulkanMiner.nrResults; i++) {
-		vulkanMiner.tmpResults[i] = (int) vulkanMiner.resultPtr[i];
+		vulkanMiner.tmpResults[i] = vulkanMiner.resultPtr[i+1];
 	}
 	vulkanMiner.cnrSubmittedHeight = vulkanMiner.height;
 	memcpy(&vulkanMiner.originalInput,&vulkanMiner.input,vulkanMiner.inputLen);
 }
 
-void reloadInput(VulkanMiner &vulkanMiner, int nonce) {
+void reloadInput(VulkanMiner &vulkanMiner, int64_t nonce) {
 	// get current blob to hash from network.
 	getCurrentBlob(vulkanMiner.input,&vulkanMiner.inputLen);
 	vulkanMiner.nonce = nonce;
@@ -430,7 +463,7 @@ void shutdownDevice(VulkanMiner &vulkanMiner) {
 	//vkFreeCommandBuffers(vulkanMiner.vkDevice,vulkanMiner.commandPool,1,&vulkanMiner.vkCommandBuffer);
 }
 
-void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &localSize, int  memFactor) {
+void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &localSize, int  memFactor,CryptoType type) {
 	uint64_t last=0;
 	VkCommandPool commandPool;
 	VkCommandBuffer vkCommandBuffer;
@@ -491,6 +524,8 @@ void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &
 			break;
 	}
 	cu = (i-1)/2;
+
+	if (type == AeonCrypto) cu *= 2;	// K12 performance
 
 	localSize = 8;
 	int mem = (getMemorySize(deviceId)/1024)*1024 - 128;
@@ -571,7 +606,7 @@ void *MinerThread(void *args)
 	miner.nrResults = 0;
 	miner.cnrHeight = 0;
 	int inputLen;
-	int nonce = getRandomNonce(miner.index);
+	int64_t nonce = getRandomNonce(miner.index);
 	getCurrentBlob(miner.input,&inputLen);
 	memcpy(&miner.originalInput,&miner.input,miner.inputLen);
 	miner.target = getTarget();
@@ -604,6 +639,8 @@ void *MinerThread(void *args)
 		}
 		minerIterate(miner);
 		hashRates[miner.index] = 1e9*(float)miner.threads[getCurrentIndex()] / (float)(now() - t0);
+		if (getVariant() == K12_ALGO)
+			hashRates[miner.index] *= 16*4096; // KangarooTwelve
 		t0 = now();
 	}
 	unmapMiningResults(miner);

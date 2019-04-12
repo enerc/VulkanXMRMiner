@@ -2511,7 +2511,7 @@ static const char *svgAxis = "<line x1=\"30\" x2=\"1990\" y1=\"380\" y2=\"380\" 
 		"<line x1=\"30\" x2=\"1990\" y1=\"158\" y2=\"158\" style=\"stroke:#888888;\" stroke-dasharray=\"5,5\"></line>"
 		"<line x1=\"30\" x2=\"1990\" y1=\"84\" y2=\"84\" style=\"stroke:#888888;\" stroke-dasharray=\"5,5\"></line>"
 		"<line x1=\"30\" x2=\"30\" y1=\"380\" y2=\"10\"  style=\"stroke:#ffffff;\"></line>"
-		"<text transform=\"rotate(270)\" x=\"-210\" y=\"25\" fill=\"yellow\" style=\"font-size:24px;stroke:#ffffff;\"  >H/s</text>\n";
+		"<text transform=\"rotate(270)\" x=\"-210\" y=\"25\" fill=\"yellow\" style=\"font-size:24px;stroke:#ffffff;\"  >";
 
 static const char*textHeader="<!DOCTYPE html>"
 "<html lang=\"en\">"
@@ -2668,6 +2668,16 @@ void writeHtmlContent(stringstream &f) {
 
 		float sy = 74.0;
 		float sx = 163.0*30.0/3600.0;
+		float scaler = 1;
+		string range = "";
+		if (hashRate[i] > 1e4) {
+			scaler = 1e3;
+			range = "k";
+		}
+		if (hashRate[i] > 1e7) {
+			scaler = 1e6;
+			range = "M";
+		}
 
 		for (int j=1; j < HASH_HISTORY; j++) {
 			int k0 = (HASH_HISTORY+hasHistoryTail[i]-j)%HASH_HISTORY;
@@ -2687,12 +2697,12 @@ void writeHtmlContent(stringstream &f) {
 			w << " stroke-width=\"2\" style=\"fill:rgb(0,255,0);stroke:rgb(0,255,0);\" />";
 		}
 
-		w << svgAxis;
+		w << svgAxis << range << "H/s</text>\n";
 
-		w << "<text x=\"5\" y=\"306\" fill=\"white\" style=\"font-size:12px;stroke:#ffffff;\"  >" << inc << "</text>";
-		w << "<text x=\"5\" y=\"232\" fill=\"white\" style=\"font-size:12px;stroke:#ffffff;\"  >" << 2*inc << "</text>";
-		w << "<text x=\"5\" y=\"158\" fill=\"white\" style=\"font-size:12px;stroke:#ffffff;\"  >" << 3*inc << "</text>";
-		w << "<text x=\"5\" y=\"84\"  fill=\"white\" style=\"font-size:12px;stroke:#ffffff;\"  >" << 4*inc << "</text>";
+		w << "<text x=\"5\" y=\"306\" fill=\"white\" style=\"font-size:12px;stroke:#ffffff;\"  >" << (int)(inc/scaler) << "</text>";
+		w << "<text x=\"5\" y=\"232\" fill=\"white\" style=\"font-size:12px;stroke:#ffffff;\"  >" << (int)(2*inc/scaler) << "</text>";
+		w << "<text x=\"5\" y=\"158\" fill=\"white\" style=\"font-size:12px;stroke:#ffffff;\"  >" << (int)(3*inc/scaler) << "</text>";
+		w << "<text x=\"5\" y=\"84\"  fill=\"white\" style=\"font-size:12px;stroke:#ffffff;\"  >" << (int)(4*inc/scaler) << "</text>";
 
 
 		float a = (float)frequency/30.0;
@@ -2717,7 +2727,7 @@ void writeHtmlContent(stringstream &f) {
 
 		w.precision(1);
 		w << "<svg viewBox=\"0 0 2000 400\"><use xlink:href=\"#hash\"></use></svg><text x=\"800\" y=\"50\" fill=\"#A50BE7\" style=\"font-size:32px\">";
-		w << hashRate[i] << " H/s";
+		w << hashRate[i]/scaler << range << " H/s";
 		w << "</text>";
 
 		w << "<svg viewBox=\"0 0 2000 400\"><use xlink:href=\"#good\"></use></svg>";

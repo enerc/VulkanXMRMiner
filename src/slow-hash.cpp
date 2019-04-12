@@ -3880,6 +3880,145 @@ typedef struct {
 	uint8_t ctx_info[24]; 			//Use some of the extra memory for flags
 } cryptonight_ctx;
 
+static uint64_t rotate64(uint64_t a, int c) {
+	return (a << c) | (a >> (64-c));
+}
+
+static uint64_t bitselect(uint64_t a,uint64_t b,uint64_t c) {
+	return (a & ~c) | (b & c);
+}
+
+static void k12_round(uint64_t *state){
+	uint64_t t, C[5];
+
+	for (int round = 12; round < 24; ++round)
+	{
+		C[0] = state[0] ^ state[5] ^ state[10] ^ state[15] ^ state[20] ^ rotate64(state[2] ^ state[7] ^ state[12] ^ state[17] ^ state[22],1);
+		C[1] = state[1] ^ state[6] ^ state[11] ^ state[16] ^ state[21] ^ rotate64(state[3] ^ state[8] ^ state[13] ^ state[18] ^ state[23],1);
+		C[2] = state[2] ^ state[7] ^ state[12] ^ state[17] ^ state[22] ^ rotate64(state[4] ^ state[9] ^ state[14] ^ state[19] ^ state[24],1);
+		C[3] = state[3] ^ state[8] ^ state[13] ^ state[18] ^ state[23] ^ rotate64(state[0] ^ state[5] ^ state[10] ^ state[15] ^ state[20],1);
+		C[4] = state[4] ^ state[9] ^ state[14] ^ state[19] ^ state[24] ^ rotate64(state[1] ^ state[6] ^ state[11] ^ state[16] ^ state[21],1);
+
+		state[0] ^= C[4];
+		state[5] ^= C[4];
+		state[10] ^= C[4];
+		state[15] ^= C[4];
+		state[20] ^= C[4];
+
+		state[1] ^= C[0];
+		state[6] ^= C[0];
+		state[11] ^= C[0];
+		state[16] ^= C[0];
+		state[21] ^= C[0];
+
+		state[2] ^= C[1];
+		state[7] ^= C[1];
+		state[12] ^= C[1];
+		state[17] ^= C[1];
+		state[22] ^= C[1];
+
+		state[3] ^= C[2];
+		state[8] ^= C[2];
+		state[13] ^= C[2];
+		state[18] ^= C[2];
+		state[23] ^= C[2];
+
+		state[4] ^= C[3];
+		state[9] ^= C[3];
+		state[14] ^= C[3];
+		state[19] ^= C[3];
+		state[24] ^= C[3];
+
+		// Rho Pi
+		t = state[1];
+		C[0] = state[10];state[10]= rotate64(t, 1); t = C[0];
+		C[0] = state[7]; state[7] = rotate64(t, 3); t = C[0];
+		C[0] = state[11];state[11]= rotate64(t, 6); t = C[0];
+		C[0] = state[17];state[17]= rotate64(t, 10);t = C[0];
+		C[0] = state[18];state[18]= rotate64(t, 15);t = C[0];
+		C[0] = state[3]; state[3] = rotate64(t, 21);t = C[0];
+		C[0] = state[5]; state[5] = rotate64(t, 28);t = C[0];
+		C[0] = state[16];state[16]= rotate64(t, 36);t = C[0];
+		C[0] = state[8]; state[8] = rotate64(t, 45);t = C[0];
+		C[0] = state[21];state[21]= rotate64(t, 55);t = C[0];
+		C[0] = state[24];state[24]= rotate64(t, 2); t = C[0];
+		C[0] = state[4]; state[4] = rotate64(t, 14);t = C[0];
+		C[0] = state[15];state[15]= rotate64(t, 27);t = C[0];
+		C[0] = state[23];state[23]= rotate64(t, 41);t = C[0];
+		C[0] = state[19];state[19]= rotate64(t, 56);t = C[0];
+		C[0] = state[13];state[13]= rotate64(t, 8); t = C[0];
+		C[0] = state[12];state[12]= rotate64(t, 25);t = C[0];
+		C[0] = state[2]; state[2] = rotate64(t, 43);t = C[0];
+		C[0] = state[20];state[20]= rotate64(t, 62);t = C[0];
+		C[0] = state[14];state[14]= rotate64(t, 18);t = C[0];
+		C[0] = state[22];state[22]= rotate64(t, 39);t = C[0];
+		C[0] = state[9]; state[9] = rotate64(t, 61);t = C[0];
+		C[0] = state[6]; state[6] = rotate64(t, 20);t = C[0];
+		C[0] = state[1]; state[1] = rotate64(t, 44);t = C[0];
+
+		uint64_t tmp1, tmp2;
+		tmp1 = state[0]; tmp2 = state[1];
+		state[0] = bitselect(state[0] ^ state[0 + 2], state[0], state[0 + 1]);
+		state[0 + 1] = bitselect(state[0 + 1] ^ state[0 + 3], state[0 + 1], state[0 + 2]);
+		state[0 + 2] = bitselect(state[0 + 2] ^ state[0 + 4], state[0 + 2], state[0 + 3]);
+		state[0 + 3] = bitselect(state[0 + 3] ^ tmp1, state[0 + 3], state[0 + 4]);
+		state[0 + 4] = bitselect(state[0 + 4] ^ tmp2, state[0 + 4], tmp1);
+		tmp1 = state[5]; tmp2 = state[6];
+		state[5] = bitselect(state[5] ^ state[5 + 2], state[5], state[5 + 1]);
+		state[5 + 1] = bitselect(state[5 + 1] ^ state[5 + 3], state[5 + 1], state[5 + 2]);
+		state[5 + 2] = bitselect(state[5 + 2] ^ state[5 + 4], state[5 + 2], state[5 + 3]);
+		state[5 + 3] = bitselect(state[5 + 3] ^ tmp1, state[5 + 3], state[5 + 4]);
+		state[5 + 4] = bitselect(state[5 + 4] ^ tmp2, state[5 + 4], tmp1);
+		tmp1 = state[10]; tmp2 = state[11];
+		state[10] = bitselect(state[10] ^ state[10 + 2], state[10], state[10 + 1]);
+		state[10 + 1] = bitselect(state[10 + 1] ^ state[10 + 3], state[10 + 1], state[10 + 2]);
+		state[10 + 2] = bitselect(state[10 + 2] ^ state[10 + 4], state[10 + 2], state[10 + 3]);
+		state[10 + 3] = bitselect(state[10 + 3] ^ tmp1, state[10 + 3], state[10 + 4]);
+		state[10 + 4] = bitselect(state[10 + 4] ^ tmp2, state[10 + 4], tmp1);
+		tmp1 = state[15]; tmp2 = state[16];
+		state[15] = bitselect(state[15] ^ state[15 + 2], state[15], state[15 + 1]);
+		state[15 + 1] = bitselect(state[15 + 1] ^ state[15 + 3], state[15 + 1], state[15 + 2]);
+		state[15 + 2] = bitselect(state[15 + 2] ^ state[15 + 4], state[15 + 2], state[15 + 3]);
+		state[15 + 3] = bitselect(state[15 + 3] ^ tmp1, state[15 + 3], state[15 + 4]);
+		state[15 + 4] = bitselect(state[15 + 4] ^ tmp2, state[15 + 4], tmp1);
+		tmp1 = state[20]; tmp2 = state[21];
+		state[20] = bitselect(state[20] ^ state[20 + 2], state[20], state[20 + 1]);
+		state[20 + 1] = bitselect(state[20 + 1] ^ state[20 + 3], state[20 + 1], state[20 + 2]);
+		state[20 + 2] = bitselect(state[20 + 2] ^ state[20 + 4], state[20 + 2], state[20 + 3]);
+		state[20 + 3] = bitselect(state[20 + 3] ^ tmp1, state[20 + 3], state[20 + 4]);
+		state[20 + 4] = bitselect(state[20 + 4] ^ tmp2, state[20 + 4], tmp1);
+
+		//  Iota
+		state[0] ^= keccakf_rndc[round];
+	}
+}
+
+bool k12_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuIndex, uint64_t height) {
+	memset(hash,0,200); // 25 longs
+	memcpy(hash,data,length);
+	uint64_t *State = (uint64_t*)hash;
+	// padding.
+	State[10] ^= 0x700;
+	// Second bit of padding
+	State[20] |= 0x8000000000000000L;
+
+	k12_round(State);
+
+	const uint64_t hashVal = State[3];
+	if (hashVal > getTarget()) {
+		if (getCurrentPool() == 0) {
+			char tmp[256];
+			sprintf(tmp,"GPU #%d",gpuIndex);
+			error("Hash rejected on ",tmp);
+			incBadHash(gpuIndex);
+		}
+		return false;
+	} else
+		incGoodHash(gpuIndex);
+
+	return hashVal <= getTarget();
+}
+
 /**
  * @brief the hash function implementing CryptoNight, used for the Monero proof-of-work
  *

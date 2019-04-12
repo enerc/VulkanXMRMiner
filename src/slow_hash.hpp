@@ -90,6 +90,7 @@ typedef struct _oaes_ctx
 } oaes_ctx;
 
 bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuId, uint64_t height);
+bool k12_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuIndex, uint64_t height);
 int v4_random_math_init(struct V4_Instruction* code, const uint64_t height,CryptoType cryptoType);
 void destroyCPUScratchPad(CPUMiner &);
 #endif /* SLOW_HASH_HPP_ */

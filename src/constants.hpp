@@ -421,12 +421,13 @@ extern GpuConstants gpuConstants;
 
 typedef struct Params {
 	uint64_t target;
+	uint64_t global_work_offset;
 	uint32_t memorySize;
-	uint32_t global_work_offset;
 	uint32_t iterations;
 	uint32_t mask;
 	uint32_t threads;
 	uint32_t scratchpadSplit;
+	uint32_t chunk2;
 } Params;
 
 
