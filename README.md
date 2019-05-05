@@ -17,7 +17,7 @@ This program should work on any Vulkan 1.0 compatible device: AMD, Intel, Nvidia
 
 Mining Aeon on Kangaroo Twelve algo is now enabled and with optimized assembly for ARM. Check the build section below to create the binary for your device.
 <div style="text-align:center">
-<img src="https://projects-static.raspberrypi.org/projects/raspberry-pi-setting-up/ee7462b4ff7a246f7cddadcc3916036f5b27f004/en/images/pi-plug-in.gif" height="200" width="200" ></div>
+<img src="https://raw.githubusercontent.com/enerc/VulkanXMRMiner/master/img/pi-plug-in.gif" height="200" width="200" ></div>
 
 # Download and run
 You can get binaries in therelease section here:  <a href="https://github.com/enerc/VulkanXMRMiner/releases">Releases</a> <br />
