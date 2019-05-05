@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,25 +30,29 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <iostream>
 
 #include "config.hpp"
+#include "log.hpp"
+#ifndef __aarch64__
 #include "mvulkan.hpp"
 #include "miner.hpp"
 #include "network.hpp"
 #include "slow_hash.hpp"
 #include "mvulkan.hpp"
 #include "constants.hpp"
-#include "log.hpp"
 #include "spirv.hpp"
 
 static VkCommandBufferBeginInfo commandBufferBeginInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, 0, 0, 0 };
+#endif
+
 static uint32_t goodHash[MAX_GPUS];
 static uint32_t badhash[MAX_GPUS];
+static uint64_t hashRates[MAX_GPUS+MAX_CPUS];
+
+#ifndef __aarch64__
 #ifdef __MINGW32__
 static HANDLE mutex;
 #else
 static sem_t mutex;
 #endif
-
-uint64_t hashRates[MAX_GPUS];
 
 void initMiners() {
 #ifdef __MINGW32__
@@ -99,7 +104,7 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 		vulkanMiner.scratchpadsSize2 = 64;
 	}
 
-	VkDeviceMemory tmpMem = allocateGPUMemory(vulkanMiner.deviceId, vulkanMiner.vkDevice, 1024, true);
+	VkDeviceMemory tmpMem = allocateGPUMemory(vulkanMiner.deviceId, vulkanMiner.vkDevice, 1024, true, true);
 	VkBuffer tmpBuf = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, tmpMem, 256, 0);
 	uint32_t alignment = getBufferMemoryRequirements(vulkanMiner.vkDevice,tmpBuf);
 	vkDestroyBuffer(vulkanMiner.vkDevice,tmpBuf,nullptr);
@@ -118,8 +123,8 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 			alignBuffer(vulkanMiner.outputSize * sizeof(int64_t),alignment)+
 			alignBuffer(vulkanMiner.debugSize,alignment);
 
-	vulkanMiner.gpuLocalMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.local_memory_size, true);
-	vulkanMiner.gpuSharedMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.shared_memory_size, false);
+	vulkanMiner.gpuLocalMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.local_memory_size, true,true);
+	vulkanMiner.gpuSharedMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.shared_memory_size, false,true);
 	vulkanMiner.local_size_cn1 = local_size_cn1;
 
 	uint64_t o = 0;
@@ -152,7 +157,7 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 
 	// Transfer constants to GPU
 	void *ptr = NULL;
-	CHECK_RESULT(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory, sizeof(Params), sizeof(GpuConstants), 0, (void ** )&ptr), "vkMapMemory");
+	CHECK_RESULT_NORET(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory, sizeof(Params), sizeof(GpuConstants), 0, (void ** )&ptr), "vkMapMemory");
 	memcpy(ptr, (const void*) &gpuConstants, sizeof(GpuConstants));
 	vkUnmapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory);
 
@@ -169,7 +174,7 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fenceInfo.pNext = NULL;
 	fenceInfo.flags = 0;
-	CHECK_RESULT(vkCreateFence(vulkanMiner.vkDevice, &fenceInfo, NULL, &vulkanMiner.drawFence), "vkCreateFence");
+	CHECK_RESULT_NORET(vkCreateFence(vulkanMiner.vkDevice, &fenceInfo, NULL, &vulkanMiner.drawFence), "vkCreateFence");
 }
 
 static const char *getCN1SpirvName(VulkanMiner &vulkanMiner, bool highMemory) {
@@ -203,7 +208,7 @@ static const char *getCN1SpirvName(VulkanMiner &vulkanMiner, bool highMemory) {
 
 static void resetCommandBuffer(VulkanMiner &vulkanMiner) {
 	vulkanMiner.commandBufferFilled = false;
-	CHECK_RESULT(vkResetCommandBuffer(vulkanMiner.vkCommandBuffer, 0), "vkResetCommandBuffer");
+	CHECK_RESULT_NORET(vkResetCommandBuffer(vulkanMiner.vkCommandBuffer, 0), "vkResetCommandBuffer");
 }
 
 static uint64_t now(void) {
@@ -286,12 +291,12 @@ void loadSPIRV(VulkanMiner &vulkanMiner) {
 	vulkanMiner.pipeline_cn7 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn7.spv");
 	if (vulkanMiner.cpuMiner.type == AeonCrypto)
 		vulkanMiner.pipeline_k12 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/k12.spv");
-	//shaderStats(vulkanMiner.vkDevice,vulkanMiner.pipeline_cn1); exit(0);
+	//shaderStats(vulkanMiner.vkDevice,vulkanMiner.pipeline_k12); exit(0);
 }
 
 // Specific command buffer for K12 algo (SHA3)
 static void createCommandBufferK12(VulkanMiner &vulkanMiner) {
-	CHECK_RESULT(vkBeginCommandBuffer(vulkanMiner.vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
+	CHECK_RESULT_NORET(vkBeginCommandBuffer(vulkanMiner.vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
 
 	// reset buffers
 	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn7);
@@ -302,7 +307,7 @@ static void createCommandBufferK12(VulkanMiner &vulkanMiner) {
 	vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_k12);
 	vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[0], 1, 1);
 
-	CHECK_RESULT(vkEndCommandBuffer(vulkanMiner.vkCommandBuffer), "vkEndCommandBuffer");
+	CHECK_RESULT_NORET(vkEndCommandBuffer(vulkanMiner.vkCommandBuffer), "vkEndCommandBuffer");
 }
 
 static void createCommandBuffer(VulkanMiner &vulkanMiner) {
@@ -311,7 +316,7 @@ static void createCommandBuffer(VulkanMiner &vulkanMiner) {
 	if (current_index == 0 && getVariant() == K12_ALGO) {
 		createCommandBufferK12(vulkanMiner);
 	} else {
-		CHECK_RESULT(vkBeginCommandBuffer(vulkanMiner.vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
+		CHECK_RESULT_NORET(vkBeginCommandBuffer(vulkanMiner.vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
 
 		// reset buffers
 		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn7);
@@ -321,7 +326,7 @@ static void createCommandBuffer(VulkanMiner &vulkanMiner) {
 		vulkanMiner.nonce += vulkanMiner.threads[current_index];			// nonce is incremented during those buffer reset
 
 		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn0);
-		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index]*2, 1, 1);
+		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index]/2, 1, 1);
 
 		if (hasHighMemory(vulkanMiner)) {
 			uint32_t cnt = vulkanMiner.groups[current_index]*(vulkanMiner.local_size_cn1 == 8 ? 2 : 1);
@@ -353,7 +358,7 @@ static void createCommandBuffer(VulkanMiner &vulkanMiner) {
 		vkCmdBindPipeline(vulkanMiner.vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, vulkanMiner.pipeline_cn3);
 		vkCmdDispatch(vulkanMiner.vkCommandBuffer, vulkanMiner.groups[current_index], 1, 1);
 
-		CHECK_RESULT(vkEndCommandBuffer(vulkanMiner.vkCommandBuffer), "vkEndCommandBuffer");
+		CHECK_RESULT_NORET(vkEndCommandBuffer(vulkanMiner.vkCommandBuffer), "vkEndCommandBuffer");
 	}
 	vulkanMiner.commandBufferFilled = true;
 }
@@ -363,7 +368,7 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 		createCommandBuffer(vulkanMiner);
 
 	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO, 0, 0, 0, 0, 1, &vulkanMiner.vkCommandBuffer, 0, 0 };
-	CHECK_RESULT(vkQueueSubmit(vulkanMiner.queue, 1, &submitInfo, vulkanMiner.drawFence), "vkQueueSubmit");
+	CHECK_RESULT_NORET(vkQueueSubmit(vulkanMiner.queue, 1, &submitInfo, vulkanMiner.drawFence), "vkQueueSubmit");
 
 	// process latest results while GPU is working
 	if (vulkanMiner.nrResults > 0) {
@@ -375,7 +380,7 @@ void minerIterate(VulkanMiner &vulkanMiner) {
 			if (getVariant() == K12_ALGO)
 				candidate = k12_slow_hash(vulkanMiner.noncedInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height);
 			else
-				candidate = cn_slow_hash(vulkanMiner.noncedInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height);
+				candidate = cn_slow_hash(vulkanMiner.noncedInput, vulkanMiner.inputLen, hash, vulkanMiner.cpuMiner, vulkanMiner.index,vulkanMiner.height,false);
 			if (candidate)
 				notifyResult(vulkanMiner.tmpResults[i], hash, vulkanMiner.originalInput,vulkanMiner.height);
 		}
@@ -404,7 +409,7 @@ void reloadInput(VulkanMiner &vulkanMiner, int64_t nonce) {
 
 	// transfer blob to GPU
 	char *ptr = NULL;
-	CHECK_RESULT(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory, sizeof(Params)+sizeof(GpuConstants), MAX_BLOB_SIZE/2, 0, (void **)&ptr),"vkMapMemory");
+	CHECK_RESULT_NORET(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory, sizeof(Params)+sizeof(GpuConstants), MAX_BLOB_SIZE/2, 0, (void **)&ptr),"vkMapMemory");
 	memcpy(ptr,(const void*)vulkanMiner.input,MAX_BLOB_SIZE/2);
 	vkUnmapMemory(vulkanMiner.vkDevice,vulkanMiner.gpuSharedMemory);
 
@@ -418,13 +423,13 @@ void sendMiningParameters(VulkanMiner &vulkanMiner) {
 	getParams(vulkanMiner,params);
 	char *ptr = NULL;
 	unmapMiningResults(vulkanMiner);
-	CHECK_RESULT(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory, 0, sizeof(Params), 0, (void **)&ptr),"vkMapMemory");
+	CHECK_RESULT_NORET(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory, 0, sizeof(Params), 0, (void **)&ptr),"vkMapMemory");
 	memcpy(ptr,(const void*)&params,sizeof(Params));
 	vkUnmapMemory(vulkanMiner.vkDevice,vulkanMiner.gpuSharedMemory);
 }
 
 void mapMiningResults(VulkanMiner &vulkanMiner) {
-	CHECK_RESULT(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory,sizeof(Params)+sizeof(GpuConstants)+vulkanMiner.inputsSize, vulkanMiner.outputSize*sizeof(int),  0, (void **)&vulkanMiner.resultPtr),"vkMapMemory");
+	CHECK_RESULT_NORET(vkMapMemory(vulkanMiner.vkDevice, vulkanMiner.gpuSharedMemory,sizeof(Params)+sizeof(GpuConstants)+vulkanMiner.inputsSize, vulkanMiner.outputSize*sizeof(int),  0, (void **)&vulkanMiner.resultPtr),"vkMapMemory");
 }
 
 void unmapMiningResults(VulkanMiner &vulkanMiner) {
@@ -476,7 +481,14 @@ void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &
 
 	uint32_t computeQueueFamillyIndex = getComputeQueueFamillyIndex(deviceId);
 	uint64_t local_memory_size= 1048576;
-	VkDeviceMemory gpuLocalMemory = allocateGPUMemory(deviceId, vkDevice, local_memory_size, true);
+	VkDeviceMemory gpuLocalMemory = allocateGPUMemory(deviceId, vkDevice, local_memory_size, true, false);
+	// Fix issue #14
+	if (gpuLocalMemory == NULL) {
+		cu =1;
+		factor = 8;
+		localSize= 16;
+		return;
+	}
 	initCommandPool(vkDevice, computeQueueFamillyIndex, &commandPool);
 	vkCommandBuffer = createCommandBuffer(vkDevice, commandPool);
 	vkGetDeviceQueue(vkDevice, computeQueueFamillyIndex, 0, &queue);
@@ -487,33 +499,33 @@ void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &
 
 	// Warm up to trigger frequency changes
 	for (int i=0; i< 10; i++) {
-		CHECK_RESULT(vkBeginCommandBuffer(vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
+		CHECK_RESULT_NORET(vkBeginCommandBuffer(vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
 		vkCmdBindPipeline(vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_cn8_1);
 		vkCmdBindDescriptorSets(vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, 0);
 		vkCmdDispatch(vkCommandBuffer, i, 1, 1);
-		CHECK_RESULT(vkEndCommandBuffer(vkCommandBuffer), "vkEndCommandBuffer");
-		CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE), "vkQueueSubmit");
-		CHECK_RESULT(vkQueueWaitIdle(queue),"vkQueueWaitIdle");
+		CHECK_RESULT_NORET(vkEndCommandBuffer(vkCommandBuffer), "vkEndCommandBuffer");
+		CHECK_RESULT_NORET(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE), "vkQueueSubmit");
+		CHECK_RESULT_NORET(vkQueueWaitIdle(queue),"vkQueueWaitIdle");
 	}
 
 	// Check with local_size = 8
 	int i=0;
 	for (i=8; i<= 512; i++) {
 		if (i > 8)
-			CHECK_RESULT(vkResetCommandBuffer(vkCommandBuffer, 0), "vkResetCommandBuffer");
+			CHECK_RESULT_NORET(vkResetCommandBuffer(vkCommandBuffer, 0), "vkResetCommandBuffer");
 
-		CHECK_RESULT(vkBeginCommandBuffer(vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
+		CHECK_RESULT_NORET(vkBeginCommandBuffer(vkCommandBuffer, &commandBufferBeginInfo), "vkBeginCommandBuffer");
 
 		// reset buffers
 		vkCmdBindPipeline(vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline_cn8_1);
 		vkCmdBindDescriptorSets(vkCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, 0);
 		vkCmdDispatch(vkCommandBuffer, i, 1, 1);
-		CHECK_RESULT(vkEndCommandBuffer(vkCommandBuffer), "vkEndCommandBuffer");
+		CHECK_RESULT_NORET(vkEndCommandBuffer(vkCommandBuffer), "vkEndCommandBuffer");
 
 		uint64_t t0 = now();
 		VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO, 0, 0, 0, 0, 1, &vkCommandBuffer, 0, 0 };
-		CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE), "vkQueueSubmit");
-		CHECK_RESULT(vkQueueWaitIdle(queue),"vkQueueWaitIdle");
+		CHECK_RESULT_NORET(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE), "vkQueueSubmit");
+		CHECK_RESULT_NORET(vkQueueWaitIdle(queue),"vkQueueWaitIdle");
 
 
 		uint64_t t1 = now();
@@ -548,25 +560,6 @@ void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &
 	vkDestroyDescriptorPool(vkDevice, descriptorPool, nullptr);
 	vkDestroyShaderModule(vkDevice,shader_module, nullptr);
 	vkDestroyDescriptorSetLayout(vkDevice,descriptorSetLayout,nullptr);
-}
-
-// not thread safe, but don't care if we loose one
-void incGoodHash(int gpuIndex) {
-	goodHash[gpuIndex]++;
-}
-
-// not thread safe, but don't care if we loose one
-void incBadHash(int gpuIndex) {
-	badhash[gpuIndex]++;
-}
-
-
-int getGoodHash(int gpuIndex) {
-	return goodHash[gpuIndex];
-}
-
-int getBadHash(int gpuIndex) {
-	return badhash[gpuIndex];
 }
 
 static void reloadPipeline(VulkanMiner &vulkanMiner, int variant) {
@@ -652,4 +645,37 @@ void *MinerThread(void *args)
 #else
 	return NULL;
 #endif
+}
+
+#else
+// Defaut arm
+void initMiners() {
+}
+#endif
+
+// not thread safe, but don't care if we loose one
+void incGoodHash(int gpuIndex) {
+	goodHash[gpuIndex]++;
+}
+
+// not thread safe, but don't care if we loose one
+void incBadHash(int gpuIndex) {
+	badhash[gpuIndex]++;
+}
+
+
+int getGoodHash(int gpuIndex) {
+	return goodHash[gpuIndex];
+}
+
+int getBadHash(int gpuIndex) {
+	return badhash[gpuIndex];
+}
+
+uint64_t getHashRates(int index) {
+	return hashRates[index];
+}
+
+void setHashRates(int index, uint64_t v) {
+	hashRates[index] = v;
 }

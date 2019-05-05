@@ -15,6 +15,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+#ifndef __aarch64__
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,7 @@ static VkPhysicalDevice* physicalDevices= NULL;
 static uint32_t physicalDeviceCount;
 GpuConstants gpuConstants;
 Params	params;
+static bool configMode=false;
 
 using namespace std;
 
@@ -64,10 +66,10 @@ int vulkanInit(){
 		nullptr 															// ppEnabledExtensionNames
 	};
 
-	CHECK_RESULT(vkCreateInstance(&instanceCreateInfo, 0, &instance),"vkCreateInstance");
+	CHECK_RESULT(vkCreateInstance(&instanceCreateInfo, 0, &instance),"vkCreateInstance",0);
 
 	physicalDeviceCount = 0;
-	CHECK_RESULT(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, 0),"vkEnumeratePhysicalDevices");
+	CHECK_RESULT(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, 0),"vkEnumeratePhysicalDevices",0);
 	if (physicalDeviceCount == 0) {
 		exitOnError("No graphic cards were found by Vulkan. Use Adrenalin not Crimson and check your drivers with VulkanInfo.");
 	}
@@ -75,7 +77,7 @@ int vulkanInit(){
 	physicalDevices = (VkPhysicalDevice*)malloc(sizeof(VkPhysicalDevice) * physicalDeviceCount);
 	memset(physicalDevices,0,sizeof(VkPhysicalDevice) * physicalDeviceCount);
 
-	CHECK_RESULT(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices),"vkEnumeratePhysicalDevices");
+	CHECK_RESULT(vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices),"vkEnumeratePhysicalDevices",0);
 
 	return physicalDeviceCount;
 }
@@ -152,12 +154,12 @@ VkDevice createDevice(int index,uint32_t computeQueueFamillyIndex) {
 	   };
 
 	VkDevice vulkanDevice;
-	CHECK_RESULT(vkCreateDevice(physicalDevices[index], &deviceCreateInfo, 0, &vulkanDevice),"vkCreateDevice");
+	CHECK_RESULT(vkCreateDevice(physicalDevices[index], &deviceCreateInfo, 0, &vulkanDevice),"vkCreateDevice",nullptr);
 
 	return vulkanDevice;
 }
 
-VkDeviceMemory allocateGPUMemory(int index,  VkDevice vkDevice, const VkDeviceSize memorySize, char isLocal) {
+VkDeviceMemory allocateGPUMemory(int index,  VkDevice vkDevice, const VkDeviceSize memorySize, char isLocal, bool isFatal) {
 	VkPhysicalDeviceMemoryProperties properties;
 	vkGetPhysicalDeviceMemoryProperties(physicalDevices[index], &properties);
 
@@ -178,7 +180,8 @@ VkDeviceMemory allocateGPUMemory(int index,  VkDevice vkDevice, const VkDeviceSi
 	if (ret != VK_SUCCESS) {
 		cout << memorySize << " GPU bytes requested." << "\n";
 		cout << "Cannot allocated GPU memory type for GPU index " << index;
-		exitOnError("");
+		if (isFatal) exitOnError("");
+		else return NULL;
 	}
 
 	const VkMemoryAllocateInfo memoryAllocateInfo = {
@@ -189,7 +192,7 @@ VkDeviceMemory allocateGPUMemory(int index,  VkDevice vkDevice, const VkDeviceSi
 	};
 
 	VkDeviceMemory memory;
-	CHECK_RESULT(vkAllocateMemory(vkDevice, &memoryAllocateInfo, 0, &memory),"vkAllocateMemory");
+	CHECK_RESULT(vkAllocateMemory(vkDevice, &memoryAllocateInfo, 0, &memory),"vkAllocateMemory",nullptr);
 
 	return memory;
 }
@@ -202,7 +205,7 @@ void initCommandPool(VkDevice vkDevice, uint32_t computeQueueFamillyIndex,VkComm
 		computeQueueFamillyIndex
 	};
 
-	CHECK_RESULT(vkCreateCommandPool(vkDevice, &commandPoolCreateInfo, 0, commandPool),"vkCreateCommandPool");
+	CHECK_RESULT_NORET(vkCreateCommandPool(vkDevice, &commandPoolCreateInfo, 0, commandPool),"vkCreateCommandPool");
 }
 
 VkCommandBuffer createCommandBuffer(VkDevice vkDevice,VkCommandPool commandPool) {
@@ -215,7 +218,7 @@ VkCommandBuffer createCommandBuffer(VkDevice vkDevice,VkCommandPool commandPool)
 	};
 
 	VkCommandBuffer commandBuffer;
-	CHECK_RESULT(vkAllocateCommandBuffers(vkDevice, &commandBufferAllocateInfo, &commandBuffer),"vkAllocateCommandBuffers");
+	CHECK_RESULT(vkAllocateCommandBuffers(vkDevice, &commandBufferAllocateInfo, &commandBuffer),"vkAllocateCommandBuffers",nullptr);
 
 	return commandBuffer;
 }
@@ -236,8 +239,8 @@ VkBuffer createBuffer(VkDevice vkDevice,uint32_t computeQueueFamillyIndex,VkDevi
 	};
 
 	VkBuffer buffer;
-	CHECK_RESULT(vkCreateBuffer(vkDevice, &bufferCreateInfo, 0, &buffer),"vkCreateBuffer");
-	CHECK_RESULT(vkBindBufferMemory(vkDevice, buffer, memory, offset),"vkBindBufferMemory");
+	CHECK_RESULT(vkCreateBuffer(vkDevice, &bufferCreateInfo, 0, &buffer),"vkCreateBuffer",nullptr);
+	CHECK_RESULT(vkBindBufferMemory(vkDevice, buffer, memory, offset),"vkBindBufferMemory",nullptr);
 
 	return buffer;
 }
@@ -285,7 +288,7 @@ VkPipelineLayout bindBuffers(VkDevice vkDevice,VkDescriptorSet &descriptorSet, 	
 		descriptorSetLayoutBindings
 	};
 
-	CHECK_RESULT(vkCreateDescriptorSetLayout(vkDevice, &descriptorSetLayoutCreateInfo, 0, &descriptorSetLayout),"vkCreateDescriptorSetLayout");
+	CHECK_RESULT(vkCreateDescriptorSetLayout(vkDevice, &descriptorSetLayoutCreateInfo, 0, &descriptorSetLayout),"vkCreateDescriptorSetLayout",nullptr);
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -297,7 +300,7 @@ VkPipelineLayout bindBuffers(VkDevice vkDevice,VkDescriptorSet &descriptorSet, 	
 		0,
 	};
 
-	CHECK_RESULT(vkCreatePipelineLayout(vkDevice, &pipelineLayoutCreateInfo, 0, &pipelineLayout),"vkCreatePipelineLayout");
+	CHECK_RESULT(vkCreatePipelineLayout(vkDevice, &pipelineLayoutCreateInfo, 0, &pipelineLayout),"vkCreatePipelineLayout",nullptr);
 
 	VkDescriptorPoolSize descriptorPoolSize = {
 		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -313,7 +316,7 @@ VkPipelineLayout bindBuffers(VkDevice vkDevice,VkDescriptorSet &descriptorSet, 	
 		&descriptorPoolSize
 	};
 
-	CHECK_RESULT(vkCreateDescriptorPool(vkDevice, &descriptorPoolCreateInfo, 0, &descriptorPool),"vkCreateDescriptorPool");
+	CHECK_RESULT(vkCreateDescriptorPool(vkDevice, &descriptorPoolCreateInfo, 0, &descriptorPool),"vkCreateDescriptorPool",nullptr);
 
 	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {
 		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -322,7 +325,7 @@ VkPipelineLayout bindBuffers(VkDevice vkDevice,VkDescriptorSet &descriptorSet, 	
 		1,
 		&descriptorSetLayout
 	};
-	CHECK_RESULT(vkAllocateDescriptorSets(vkDevice, &descriptorSetAllocateInfo, &descriptorSet),"vkAllocateDescriptorSets");
+	CHECK_RESULT(vkAllocateDescriptorSets(vkDevice, &descriptorSetAllocateInfo, &descriptorSet),"vkAllocateDescriptorSets",nullptr);
 
 	VkDescriptorBufferInfo descriptorBufferInfo0 = { b0, 0, 	VK_WHOLE_SIZE };
 	VkDescriptorBufferInfo descriptorBufferInfo1 = { b1, 0, 	VK_WHOLE_SIZE };
@@ -367,7 +370,7 @@ VkPipelineLayout bindBuffer(VkDevice vkDevice,VkDescriptorSet &descriptorSet, 	V
 		descriptorSetLayoutBindings
 	};
 
-	CHECK_RESULT(vkCreateDescriptorSetLayout(vkDevice, &descriptorSetLayoutCreateInfo, 0, &descriptorSetLayout),"vkCreateDescriptorSetLayout");
+	CHECK_RESULT(vkCreateDescriptorSetLayout(vkDevice, &descriptorSetLayoutCreateInfo, 0, &descriptorSetLayout),"vkCreateDescriptorSetLayout",nullptr);
 
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -379,7 +382,7 @@ VkPipelineLayout bindBuffer(VkDevice vkDevice,VkDescriptorSet &descriptorSet, 	V
 		0
 	};
 
-	CHECK_RESULT(vkCreatePipelineLayout(vkDevice, &pipelineLayoutCreateInfo, 0, &pipelineLayout),"vkCreatePipelineLayout");
+	CHECK_RESULT(vkCreatePipelineLayout(vkDevice, &pipelineLayoutCreateInfo, 0, &pipelineLayout),"vkCreatePipelineLayout",nullptr);
 
 	VkDescriptorPoolSize descriptorPoolSize = {
 		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -395,7 +398,7 @@ VkPipelineLayout bindBuffer(VkDevice vkDevice,VkDescriptorSet &descriptorSet, 	V
 		&descriptorPoolSize
 	};
 
-	CHECK_RESULT(vkCreateDescriptorPool(vkDevice, &descriptorPoolCreateInfo, 0, &descriptorPool),"vkCreateDescriptorPool");
+	CHECK_RESULT(vkCreateDescriptorPool(vkDevice, &descriptorPoolCreateInfo, 0, &descriptorPool),"vkCreateDescriptorPool",nullptr);
 
 	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {
 		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
@@ -404,7 +407,7 @@ VkPipelineLayout bindBuffer(VkDevice vkDevice,VkDescriptorSet &descriptorSet, 	V
 		1,
 		&descriptorSetLayout
 	};
-	CHECK_RESULT(vkAllocateDescriptorSets(vkDevice, &descriptorSetAllocateInfo, &descriptorSet),"vkAllocateDescriptorSets");
+	CHECK_RESULT(vkAllocateDescriptorSets(vkDevice, &descriptorSetAllocateInfo, &descriptorSet),"vkAllocateDescriptorSets",nullptr);
 
 	VkDescriptorBufferInfo descriptorBufferInfo0 = { b0, 0, 	VK_WHOLE_SIZE };
 
@@ -451,7 +454,7 @@ VkPipeline loadShader(VkDevice vkDevice, VkPipelineLayout pipelineLayout,VkShade
 		shader
 	};
 
-	CHECK_RESULT(vkCreateShaderModule(vkDevice, &shaderModuleCreateInfo, 0, &shader_module),"vkCreateShaderModule");
+	CHECK_RESULT(vkCreateShaderModule(vkDevice, &shaderModuleCreateInfo, 0, &shader_module),"vkCreateShaderModule",nullptr);
 
 	VkComputePipelineCreateInfo computePipelineCreateInfo = {
 		VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
@@ -472,7 +475,7 @@ VkPipeline loadShader(VkDevice vkDevice, VkPipelineLayout pipelineLayout,VkShade
 	};
 
 	VkPipeline pipeline;
-	CHECK_RESULT(vkCreateComputePipelines(vkDevice, 0, 1, &computePipelineCreateInfo, 0, &pipeline),"vkCreateComputePipelines");
+	CHECK_RESULT(vkCreateComputePipelines(vkDevice, 0, 1, &computePipelineCreateInfo, 0, &pipeline),"vkCreateComputePipelines",nullptr);
 
 	free(shader);
 	fclose(fp);
@@ -485,9 +488,9 @@ void shaderStats(VkDevice vkDevice,VkPipeline shader) {
 		size_t pInfoSize;
 		PFN_vkGetShaderInfoAMD vkGetShaderInfoAMD = (PFN_vkGetShaderInfoAMD)vkGetDeviceProcAddr(vkDevice, "vkGetShaderInfoAMD");
 
-		CHECK_RESULT(vkGetShaderInfoAMD(vkDevice,shader,VK_SHADER_STAGE_COMPUTE_BIT,VK_SHADER_INFO_TYPE_STATISTICS_AMD,&pInfoSize,NULL),"vkGetShaderInfoAMD");
+		CHECK_RESULT_NORET(vkGetShaderInfoAMD(vkDevice,shader,VK_SHADER_STAGE_COMPUTE_BIT,VK_SHADER_INFO_TYPE_STATISTICS_AMD,&pInfoSize,NULL),"vkGetShaderInfoAMD");
 		void *pinfo = (void*)malloc(pInfoSize);
-		CHECK_RESULT(vkGetShaderInfoAMD(vkDevice,shader,VK_SHADER_STAGE_COMPUTE_BIT,VK_SHADER_INFO_TYPE_STATISTICS_AMD,&pInfoSize,pinfo),"vkGetShaderInfoAMD");
+		CHECK_RESULT_NORET(vkGetShaderInfoAMD(vkDevice,shader,VK_SHADER_STAGE_COMPUTE_BIT,VK_SHADER_INFO_TYPE_STATISTICS_AMD,&pInfoSize,pinfo),"vkGetShaderInfoAMD");
 
 		VkShaderStatisticsInfoAMD *info = (VkShaderStatisticsInfoAMD*)pinfo;
 		printf("---------------------------------------\n");
@@ -511,9 +514,9 @@ void shaderStats(VkDevice vkDevice,VkPipeline shader) {
 		printf("\n");
 		free(pinfo);
 
-		CHECK_RESULT(vkGetShaderInfoAMD(vkDevice,shader,VK_SHADER_STAGE_COMPUTE_BIT,VK_SHADER_INFO_TYPE_DISASSEMBLY_AMD,&pInfoSize,NULL),"vkGetShaderInfoAMD");
+		CHECK_RESULT_NORET(vkGetShaderInfoAMD(vkDevice,shader,VK_SHADER_STAGE_COMPUTE_BIT,VK_SHADER_INFO_TYPE_DISASSEMBLY_AMD,&pInfoSize,NULL),"vkGetShaderInfoAMD");
 		pinfo = (void*)malloc(pInfoSize);
-		CHECK_RESULT(vkGetShaderInfoAMD(vkDevice,shader,VK_SHADER_STAGE_COMPUTE_BIT,VK_SHADER_INFO_TYPE_DISASSEMBLY_AMD,&pInfoSize,pinfo),"vkGetShaderInfoAMD");
+		CHECK_RESULT_NORET(vkGetShaderInfoAMD(vkDevice,shader,VK_SHADER_STAGE_COMPUTE_BIT,VK_SHADER_INFO_TYPE_DISASSEMBLY_AMD,&pInfoSize,pinfo),"vkGetShaderInfoAMD");
 		printf("%s\n",(const char*)pinfo);
 		free(pinfo);
 	}
@@ -555,3 +558,13 @@ std::string getVulkanVersion() {
 	s << major << "." << minor << "." << patch;
 	return s.str();
 }
+
+void setConfigMode(bool mode) {
+	configMode = mode;
+}
+
+
+bool getConfigMode() {
+	return configMode;
+}
+#endif

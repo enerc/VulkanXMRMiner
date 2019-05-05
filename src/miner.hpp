@@ -1,8 +1,11 @@
 #ifndef MINER_HPP_
 #define MINER_HPP_
+
+#ifndef __aarch64__
 #ifdef __MINGW32__
 #include <windows.h>
 #endif
+#include <vulkan/vulkan.h>
 
 #include "slow_hash.hpp"
 #include "config.hpp"
@@ -83,9 +86,6 @@ struct VulkanMiner {
 	CryptoType currentCrypto;
 };
 
-extern uint64_t hashRates[MAX_GPUS];
-
-void initMiners();
 void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMiner, uint32_t threads, uint32_t local_size_cn1, uint32_t cu, uint32_t chunk2, int deviceId, int index);
 void loadSPIRV(VulkanMiner &vulkanMiner);
 void minerIterate(VulkanMiner &vulkanMiner);
@@ -95,15 +95,27 @@ void mapMiningResults(VulkanMiner &vulkanMiner);
 void unmapMiningResults(VulkanMiner &vulkanMiner);
 void shutdownDevice(VulkanMiner &vulkanMiner);
 void findBestSetting(VkDevice vkDevice,int deviceId, int &cu, int &factor, int &localSize, int memFactor,CryptoType type);
-void incGoodHash(int gpuIndex);
-void incBadHash(int gpuIndex);
-int getGoodHash(int gpuIndex);
-int getBadHash(int gpuIndex);
 
 #ifdef __MINGW32__
 DWORD WINAPI MinerThread(LPVOID args);
 #else
 void *MinerThread(void *args);
 #endif
+
+#endif // __aarch64__
+
+#ifdef __MINGW32__
+DWORD WINAPI K12CpuMinerThread(LPVOID args);
+#else
+void *K12CpuMinerThread(void *args);
+#endif
+
+void initMiners();
+void incGoodHash(int gpuIndex);
+void incBadHash(int gpuIndex);
+int getGoodHash(int gpuIndex);
+int getBadHash(int gpuIndex);
+uint64_t getHashRates(int index);
+void setHashRates(int index, uint64_t v);
 
 #endif /* MINER_HPP_ */

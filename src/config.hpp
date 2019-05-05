@@ -1,13 +1,14 @@
 #ifndef CONFIG_HPP_
 #define CONFIG_HPP_
 
-#define VERSION 		"0.4"
+#define VERSION 		"0.4.1"
 
 #define MAX_ADRESS_SIZE 256
 #define MAX_POOLNAME_SIZE 128
 #define MAX_PASSWORD_SIZE 256
 #define CONFIG_FILENAME "config.json"
 #define MAX_GPUS		32
+#define MAX_CPUS 		64
 #define DEFAULT_CONSOLE_REFRESH_RATE	30
 #define K12_ALGO		0x100
 
@@ -35,7 +36,8 @@ typedef struct Config {
 	char poolPassword[MAX_PASSWORD_SIZE];
 	int  poolPort;
 	CryptoType type;
-	int 	nbGpus;
+	int   nbGpus;
+	int   nbCPUs;
 	bool  debugNetwork;
 	int   consoleListenPort;
 	int   consoleRefreshRate;

@@ -41,6 +41,7 @@
 #include "config.hpp"
 #include "log.hpp"
 #include "miner.hpp"
+#include "slow_hash.hpp"
 #include "network.hpp"
 
 #define MAX_GPU_NAME_SIZE 25

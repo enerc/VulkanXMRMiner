@@ -25,9 +25,11 @@ union cn_slow_hash_state {
 
 typedef struct CPUMiner {
 	uint8_t *hp_state;
-	int variant;
-	int  memFactor;
-	bool debugNetwork;
+	int 	variant;
+	int  	memFactor;
+	bool 	debugNetwork;
+	int 	index;
+	int 	global_index;
 	CryptoType type;
 	cn_slow_hash_state shs;
 } CPUMiner;
@@ -89,7 +91,7 @@ typedef struct _oaes_ctx
   uint8_t iv[OAES_BLOCK_SIZE];
 } oaes_ctx;
 
-bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuId, uint64_t height);
+bool cn_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuId, uint64_t height, bool miningMode);
 bool k12_slow_hash(const void *data, size_t length,unsigned char *hash, CPUMiner &cpuMiner, int gpuIndex, uint64_t height);
 int v4_random_math_init(struct V4_Instruction* code, const uint64_t height,CryptoType cryptoType);
 void destroyCPUScratchPad(CPUMiner &);

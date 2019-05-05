@@ -36,8 +36,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "log.hpp"
 #include "config.hpp"
 #include "miner.hpp"
+#include "slow_hash.hpp"
 #include "network.hpp"
+#ifndef __aarch64__
 #include "mvulkan.hpp"
+#endif
 
 using namespace std;
 static const char *CryptoNames[] = { "monero", "wownero", "aeon" , "turtlecoin"};
@@ -136,6 +139,8 @@ static string createJsonFromConfig() {
 	s << " \"debug_network\" : \"" << (config.debugNetwork? "true" : "false") << "\",\n";
 	s << " \"console_listen_port\" : \"" << config.consoleListenPort << "\",\n";
 	s << " \"console_refresh_rate\" : \"" << config.consoleRefreshRate  << "\",\n";
+	if (config.type == AeonCrypto)
+		s << " \"number_cpus\" : \"" << config.nbCPUs  << "\",\n";
 
 	s << " \"cards\" : [\n";
 	for (int i=0; i < config.nbGpus; i++) {
@@ -221,6 +226,12 @@ static void decodeConfig(const char *conf)  {
 	loc = getJSONEntryLocation(conf,len,"wallet_address",true);
 	fillStringProperty(config.address,MAX_ADRESS_SIZE,loc);
 
+	loc = getJSONEntryLocation(conf,len,"number_cpus",false);
+	if (loc != nullptr)
+		config.nbCPUs = getIntProperty(loc);
+	else
+		config.nbCPUs = 0;
+
 	loc = getJSONEntryLocation(conf,len,"cards",true);
 	int cardIndex = 0;
 	while (loc != nullptr && cardIndex < MAX_GPUS) {
@@ -301,16 +312,23 @@ static string filterComments(const string & s) {
 void makeConfig() {
 	std::string input;
 	setTerminalBehavior();
+#ifndef __aarch64__
+	setConfigMode(true);
 	cout << "Please use recent drivers for better support and performance. Vulkan is a pretty new API.\n";
 	cout << "You can get more about Vulkan at https://www.amd.com/en/technologies/vulkan or https://developer.nvidia.com/vulkan-driver \n\n";
+#endif
 	cout << "\nNo config.json file found, entering configuration setup...\n";
 
 select1:
 	cout << "Select a crypto:\n";
+#ifndef __aarch64__
 	cout << " 0 for Monero\n";
 	cout << " 1 for Wownero\n";
 	cout << " 2 for Aeon v7/v8 - cryptonight light or K12\n";
 	cout << " 3 for TurtleCoin\n";
+#else
+	cout << " 2 for Aeon K12\n";
+#endif
 	cout << "Your crypto: ";
 	config.type = MoneroCrypto;
     std::getline(cin, input );
@@ -426,6 +444,7 @@ select4:
 	} else
 		config.consoleRefreshRate = DEFAULT_CONSOLE_REFRESH_RATE;
 
+#ifndef __aarch64__
 	int nbDevices = vulkanInit();
 
 	cout << "\nChecking your cards\n";
@@ -484,6 +503,12 @@ selectWS:
 		cout << "\n";
 	}
 	config.nbGpus = cardIndex;
+#else // __aarch64__
+	config.nbGpus = 0;
+#endif
+
+	if (config.type == AeonCrypto)
+		config.nbCPUs = 1;
 
 	string confStr = createJsonFromConfig();
 	ofstream out("config.json");
@@ -500,8 +525,10 @@ selectWS:
 	cout << "|_____|_| |_|/ |\\___/ \\__, | (_) \n";
 	cout << "           |__/       |___/      \n\n";
 
-
+#ifndef __aarch64__
 	vulkanEnd();
+	setConfigMode(false);
+#endif
 #ifdef __MINGW32__
 	Sleep(4);				// time to read before cmd exit
 #endif

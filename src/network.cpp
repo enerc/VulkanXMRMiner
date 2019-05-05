@@ -44,6 +44,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include "config.hpp"
 #include "log.hpp"
 #include "miner.hpp"
+#include "slow_hash.hpp"
 #include "network.hpp"
 
 #define MAX_CARDS	  32
@@ -431,9 +432,9 @@ static void WaitForJob() {
 
 uint64_t getTarget() {
 	WaitForJob();
-	if (target != 0)
-		return 0xFFFFFFFFFFFFFFFFULL / (0xFFFFFFFFULL / target);
-	else
+	if (target != 0) {
+		return 0xFFFFFFFFUL * target;
+	} else
 		return 0;
 }
 
@@ -741,6 +742,13 @@ static void checkPool() {
 		cout << "Switch to dev pool \n";
 		mpool = n;
 		dpool = n;
+		if (getVariant() == K12_ALGO) {
+#ifdef __aarch64__
+			ports[1] = 3334;
+#else
+			ports[1] = 5556;
+#endif
+		}
 		blob[0] = 0;
 		target = 0;
 		height = 0;
