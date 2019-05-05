@@ -55,6 +55,21 @@ if (SOFT_AES)
 		set(CMAKE_C_FLAGS "-O1 -DSOFT_AES  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
 	endif()
 endif()
+
+if (CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64)
+	message("Build for ARM V8 (Cortex A53 +)")
+	SET(ARCH native)
+	if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+		set(CMAKE_CXX_FLAGS_RELEASE "-g3 -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+		set(CMAKE_C_FLAGS_RELEASE "-g3 -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+	else()
+		set(CMAKE_CXX_FLAGS_RELEASE "-O3 -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+		set(CMAKE_C_FLAGS_RELEASE "-O3  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+		# if not build specified
+		set(CMAKE_CXX_FLAGS "-O3  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+		set(CMAKE_C_FLAGS "-O3  -march=${ARCH}" CACHE STRING "compile flags" FORCE)
+	endif()
+endif()
 	
 # Add Include/Lib (Windows) and include/lib (Linux)
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
@@ -72,7 +87,10 @@ endif()
 file(GLOB SRCFILES_CPP "src/*.cpp")
 set_source_files_properties(${SRCFILES_CPP} PROPERTIES LANGUAGE CXX)
 
-add_executable(miner ${SRCFILES_CPP})
+file(GLOB SRCFILES_S "src/*.S")
+set_source_files_properties(${SRCFILES_S} PROPERTIES LANGUAGE C)
+
+add_executable(miner ${SRCFILES_CPP} ${SRCFILES_S})
 target_link_libraries(miner ${ADDITIONAL_LIBRARIES})
 
 # copy SPIR-V programs, GLSL compiler (cryptonightR), and Windows DLLs
@@ -80,11 +98,9 @@ add_custom_command(TARGET miner PRE_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/spirv spirv)
 add_custom_command(TARGET miner PRE_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/redist .)
-add_custom_command(TARGET miner POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/build/miner ${CMAKE_SOURCE_DIR}/build/miner.exe)
 
 # make the download file for Linux
-if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux" AND NOT (CMAKE_SYSTEM_PROCESSOR STREQUAL aarch64))
 	add_custom_target(zip ALL DEPENDS miner COMMAND
     ${CMAKE_COMMAND} -E tar "zcvf" "vulkanXMRMiner.tgz"
     "miner"
