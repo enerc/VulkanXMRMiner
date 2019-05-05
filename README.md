@@ -14,6 +14,11 @@ What's Vulkan:<br/>
 
 This program should work on any Vulkan 1.0 compatible device: AMD, Intel, Nvidia.
 
+
+Mining Aeon on Kangaroo Twelve algo is now enabled and with optimized assembly for ARM. Check the build section below to create the binary for your device.
+<div style="text-align:center">
+<img src="https://projects-static.raspberrypi.org/projects/raspberry-pi-setting-up/ee7462b4ff7a246f7cddadcc3916036f5b27f004/en/images/pi-plug-in.gif" height="200" width="200" ></div>
+
 # Download and run
 You can get binaries in therelease section here:  <a href="https://github.com/enerc/VulkanXMRMiner/releases">Releases</a> <br />
 
@@ -23,7 +28,8 @@ The binary glslangValidator.exe/glslangValidator is from the Vulkan SDK and is f
 
 New in 0.2: Monitoring, hashrate seen by pool improved, turtlecoin and bittorium support, cn/wow.<br/>
 New in 0.3: cn/r<br/>
-New in 0.4: KangarooTwelve
+New in 0.4: KangarooTwelve<br/>
+New in 0.4.1: ARM CPU K12 mining
 
 # Drivers installation
 On Windows, Vulkan should be provided with recent drivers for AMD and NVIDIA. On AMD only use <b>2018+ Adrenalin drivers</b>. Crimson drivers are too old.<br/>
@@ -63,7 +69,7 @@ Number of CU x Factor x 2 Mb (1Mb for Cryptonight light)<br/>
 - console_listen_port: 0 to disable JSON/Graphic or port number
 - console_refresh_rate: 30s will give a hashrate window of 12 hours in the graphs.
 
-# Build
+# Windows and Linux build
 cmake is required to perform the build. Set environment variable VULKAN_SDK for custom vulkan libraries or when cross building for Windows.<br />
 >git clone https://github.com/enerc/VulkanXMRMiner.git<br/>
 >cd VulkanXMRMiner<br/>
@@ -76,6 +82,13 @@ cmake is required to perform the build. Set environment variable VULKAN_SDK for 
 > use cmake -DSOFT_AES=1 .. for non aes-ni processors
 
 Extract vulkanXMRMiner.zip or vulkanXMRMiner.tgz and start the miner.
+
+# Raspberry and clones build
+cmake and gcc must be installed to perform the build. VULKAN_SDK is not needed.<br />
+>git clone https://github.com/enerc/VulkanXMRMiner.git<br/>
+>cd VulkanXMRMiner<br/>
+> cmake . ; make -j4<br/>
+> ./mine
 
 # Monitoring
 Monitoring can be accessed through localhost:"the port in console_listen_port configuration file".<br/>
@@ -108,6 +121,9 @@ Vega56 1500/1075&nbsp;: 3970 H/s on Windows 10<br />
 ## on KangarooTwelve (Aeon)
 <span style="font-family: monospace;">
 Vega56 1500Mhz&nbsp;: 950 MH/s<br />
+</span>
+<span style="font-family: monospace;">
+ARM Cortex A53@1200Mhz&nbsp;: 2 MH/s<br />
 </span>
 
 ## on TurtleCoin
