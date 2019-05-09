@@ -262,7 +262,7 @@ int main(int argc, char **argv) {
 				cout << START_LIGHT_GREEN << hashesPerSec/1000000 << "MH/s " << START_GREEN << totalShares << "/" << getInvalidShares() << "/" << getExpiredShares() << " ";
 			for (int i = 0; i < config.nbGpus+config.nbCPUs; i++) {
 				setHashRate(i,mHashrate[i] / 1000.0);
-				int j = i < config.nbGpus ? config.nbGpus : i + MAX_GPUS;
+				int j = i < config.nbGpus ? i : i + MAX_GPUS;
 				if (mHashrate[i] < 3e7)
 					cout << "[" << i << "]:" << (mHashrate[i] == 0 ? START_STUCKED : "") << (mHashrate[i] / 1000.0) << START_GREEN << "H/s " << getGoodHash(j) << "/" << getBadHash(j) << "  ";
 				else if (mHashrate[i] < 1e9)
