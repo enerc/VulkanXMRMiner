@@ -86,6 +86,9 @@ void vulkanEnd() {
 }
 
 void getDeviceName(int index, char *name) {
+	if (physicalDevices[index] == 0)
+		exitOnError("\nLooks one card has been removed. Check your config");
+
 	VkPhysicalDeviceProperties physicalDeviceProperties;
 	vkGetPhysicalDeviceProperties(physicalDevices[index],&physicalDeviceProperties);
 	int len = strlen(physicalDeviceProperties.deviceName);
