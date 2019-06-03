@@ -36,7 +36,7 @@ endif()
 # Look for vulkan SDK
 # For a Windows build on Linux, install the Vulkan SDK with wine, and set VULKAN_SDK to ..../.wine/drive_c/VulkanSDK/1.x.y
 # For Linux, install libvulkan-dev
-find_path(VulkanIncludes vulkan/vulkan.h PATHS ENV VULKAN_SDK ENV /usr )
+find_path(VulkanIncludes vulkan/vulkan.h PATHS $ENV{VULKAN_SDK}/Include $ENV{VULKAN_SDK}/include /usr )
 if(NOT VulkanIncludes)
   message(FATAL_ERROR "Can't find folder containing vulkan.h")
 endif()
@@ -73,6 +73,7 @@ endif()
 	
 # Add Include/Lib (Windows) and include/lib (Linux)
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows")
+  set(CMAKE_CXX_FLAGS "-static ${CMAKE_CXX_FLAGS}")
   set(ADDITIONAL_LIBRARIES vulkan-1 pthread ws2_32)
 	include_directories("$ENV{VULKAN_SDK}/Include")
 	link_directories("$ENV{VULKAN_SDK}/Lib")
