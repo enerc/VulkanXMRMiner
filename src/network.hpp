@@ -7,6 +7,7 @@
 #define DEV_HOST		"dev.vulkanmines.net"
 #define DEV_PORT		8081
 #define MAX_BLOB_SIZE 	256
+#define MAX_TARGET_SIZE 17
 
 void initNetwork(const CPUMiner &cpuMiner);
 void closeNetwork();

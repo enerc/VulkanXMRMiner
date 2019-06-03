@@ -263,15 +263,15 @@ static bool decodeTarget(const char *msg) {
 	loc += needleLen;
 
 	int i = 0;
-	char tmp[9];
-	memset(tmp, '0', 9);
+	char tmp[MAX_TARGET_SIZE];
+	memset(tmp, '0', MAX_TARGET_SIZE);
 	while (*loc != '"') {
 		tmp[i] = *loc;
 		i++;
 		loc++;
 	}
 	uint64_t tmp_target = 0;
-	hex2bin(tmp, 8, (unsigned char*) &tmp_target);
+	hex2bin(tmp, getVariant() == K12_ALGO ?  16 :8	, (unsigned char*) &tmp_target);
 	target = tmp_target;						// atomic write
 	return true;
 }
@@ -433,7 +433,10 @@ static void WaitForJob() {
 uint64_t getTarget() {
 	WaitForJob();
 	if (target != 0) {
-		return 0xFFFFFFFFUL * target;
+		if (getVariant() != K12_ALGO)
+			return 0xFFFFFFFFUL * target;
+		else
+			return target;
 	} else
 		return 0;
 }
