@@ -88,7 +88,7 @@ cmake and gcc must be installed to perform the build. VULKAN_SDK is not needed.<
 >git clone https://github.com/enerc/VulkanXMRMiner.git<br/>
 >cd VulkanXMRMiner<br/>
 > cmake . ; make -j4<br/>
-> ./mine
+> ./miner
 
 # Monitoring
 Monitoring can be accessed through localhost:"the port in console_listen_port configuration file".<br/>
