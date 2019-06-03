@@ -263,15 +263,15 @@ static bool decodeTarget(const char *msg) {
 	loc += needleLen;
 
 	int i = 0;
-	char tmp[9];
-	memset(tmp, '0', 9);
+	char tmp[17];
+	memset(tmp, '0', 17);
 	while (*loc != '"') {
 		tmp[i] = *loc;
 		i++;
 		loc++;
 	}
 	uint64_t tmp_target = 0;
-	hex2bin(tmp, 8, (unsigned char*) &tmp_target);
+	hex2bin(tmp, 16, (unsigned char*) &tmp_target);
 	target = tmp_target;						// atomic write
 	return true;
 }
@@ -432,10 +432,7 @@ static void WaitForJob() {
 
 uint64_t getTarget() {
 	WaitForJob();
-	if (target != 0) {
-		return 0xFFFFFFFFUL * target;
-	} else
-		return 0;
+	return target;
 }
 
 uint64_t getRandomNonce(int gpuIndex) {
