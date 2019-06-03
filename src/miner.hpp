@@ -12,7 +12,8 @@
 #include "network.hpp"
 
 #define SCRATCHPAD_SPLIT 1792
-
+#define K12_LOCAL_SIZE_AMD	 256
+#define K12_LOCAL_SIZE_NV	 128
 
 struct VulkanMiner {
 	int deviceId;

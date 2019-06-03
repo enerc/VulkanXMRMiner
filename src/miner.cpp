@@ -106,22 +106,22 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 
 	VkDeviceMemory tmpMem = allocateGPUMemory(vulkanMiner.deviceId, vulkanMiner.vkDevice, 1024, true, true);
 	VkBuffer tmpBuf = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, tmpMem, 256, 0);
-	uint32_t alignment = getBufferMemoryRequirements(vulkanMiner.vkDevice,tmpBuf);
+	vulkanMiner.alignment = getBufferMemoryRequirements(vulkanMiner.vkDevice,tmpBuf);
 	vkDestroyBuffer(vulkanMiner.vkDevice,tmpBuf,nullptr);
 	vkFreeMemory(vkDevice , tmpMem, NULL);
 	
-	vulkanMiner.scratchpadsSize1 = alignBuffer(vulkanMiner.scratchpadsSize1,alignment);
-	vulkanMiner.scratchpadsSize2 = alignBuffer(vulkanMiner.scratchpadsSize2,alignment);
-	vulkanMiner.debugSize = alignBuffer(256 * sizeof(uint64_t),alignment);
+	vulkanMiner.scratchpadsSize1 = alignBuffer(vulkanMiner.scratchpadsSize1,vulkanMiner.alignment);
+	vulkanMiner.scratchpadsSize2 = alignBuffer(vulkanMiner.scratchpadsSize2,vulkanMiner.alignment);
+	vulkanMiner.debugSize = alignBuffer(256 * sizeof(uint64_t),vulkanMiner.alignment);
 	vulkanMiner.local_memory_size = vulkanMiner.scratchpadsSize1 +
 			vulkanMiner.scratchpadsSize2 +
-			alignBuffer(vulkanMiner.stateSize * maxThreads,alignment) +
-			alignBuffer(4L * sizeof(int) * (maxThreads + 2L),alignment);
-	vulkanMiner.shared_memory_size = alignBuffer(sizeof(Params),alignment) +
-			alignBuffer(sizeof(GpuConstants),alignment) +
-			alignBuffer(vulkanMiner.inputsSize,alignment) +
-			alignBuffer(vulkanMiner.outputSize * sizeof(int64_t),alignment)+
-			alignBuffer(vulkanMiner.debugSize,alignment);
+			alignBuffer(vulkanMiner.stateSize * maxThreads,vulkanMiner.alignment) +
+			alignBuffer(4L * sizeof(int) * (maxThreads + 2L),vulkanMiner.alignment);
+	vulkanMiner.shared_memory_size = alignBuffer(sizeof(Params),vulkanMiner.alignment) +
+			alignBuffer(sizeof(GpuConstants),vulkanMiner.alignment) +
+			alignBuffer(vulkanMiner.inputsSize,vulkanMiner.alignment) +
+			alignBuffer(vulkanMiner.outputSize * sizeof(int64_t),vulkanMiner.alignment)+
+			alignBuffer(vulkanMiner.debugSize,vulkanMiner.alignment);
 
 	vulkanMiner.gpuLocalMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.local_memory_size, true,true);
 	vulkanMiner.gpuSharedMemory = allocateGPUMemory(deviceId, vulkanMiner.vkDevice, vulkanMiner.shared_memory_size, false,true);
@@ -134,22 +134,22 @@ void initVulkanMiner(VulkanMiner &vulkanMiner,VkDevice vkDevice, CPUMiner cpuMin
 	vulkanMiner.gpu_scratchpadsBuffer2 = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuLocalMemory, vulkanMiner.scratchpadsSize2, o);
 	o += vulkanMiner.scratchpadsSize2;
 	vulkanMiner.gpu_statesBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuLocalMemory, vulkanMiner.stateSize * maxThreads, o);
-	o += alignBuffer(vulkanMiner.stateSize * maxThreads,alignment);
+	o += alignBuffer(vulkanMiner.stateSize * maxThreads,vulkanMiner.alignment);
 	vulkanMiner.gpu_branchesBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuLocalMemory, 4 * sizeof(int) * (maxThreads + 2), o);
-	o += alignBuffer(4 * sizeof(int) * (maxThreads + 2),alignment);
+	o += alignBuffer(4 * sizeof(int) * (maxThreads + 2),vulkanMiner.alignment);
 
 	// create the CPU shared buffers
 	o = 0;
 	vulkanMiner.gpu_params = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, sizeof(Params), o);
-	o += alignBuffer(sizeof(Params),alignment);
+	o += alignBuffer(sizeof(Params),vulkanMiner.alignment);
 	vulkanMiner.gpu_constants = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, sizeof(GpuConstants), o);
-	o += alignBuffer(sizeof(GpuConstants),alignment);
+	o += alignBuffer(sizeof(GpuConstants),vulkanMiner.alignment);
 	vulkanMiner.gpu_inputsBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.inputsSize, o);
-	o += alignBuffer(vulkanMiner.inputsSize,alignment);
+	o += alignBuffer(vulkanMiner.inputsSize,vulkanMiner.alignment);
 	vulkanMiner.gpu_outputBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.outputSize * sizeof(int64_t), o);
-	o += alignBuffer(vulkanMiner.outputSize * sizeof(int64_t),alignment);
+	o += alignBuffer(vulkanMiner.outputSize * sizeof(int64_t),vulkanMiner.alignment);
 	vulkanMiner.gpu_debugBuffer = createBuffer(vulkanMiner.vkDevice, computeQueueFamillyIndex, vulkanMiner.gpuSharedMemory, vulkanMiner.debugSize, o);
-	o += alignBuffer(vulkanMiner.debugSize,alignment);
+	o += alignBuffer(vulkanMiner.debugSize,vulkanMiner.alignment);
 
 	vulkanMiner.pipelineLayout = bindBuffers(vulkanMiner.vkDevice, vulkanMiner.descriptorSet,vulkanMiner.descriptorPool,vulkanMiner.descriptorSetLayout,
 			vulkanMiner.gpu_scratchpadsBuffer1, vulkanMiner.gpu_scratchpadsBuffer2, vulkanMiner.gpu_statesBuffer,
@@ -230,7 +230,8 @@ static void getParams(VulkanMiner &vulkanMiner,Params	&params ) {
 		params.mask = 0x1FFF0;
 	}
 	if (vulkanMiner.cpuMiner.type == AeonCrypto && getVariant() == K12_ALGO) {
-		params.threads = vulkanMiner.groups[getCurrentIndex()]*256*4096;
+		// guessing vulkanMiner.alignment is 1 on AMD and >1 on Nvidia
+		params.threads = vulkanMiner.groups[getCurrentIndex()]*(vulkanMiner.alignment == 4 ? K12_LOCAL_SIZE_AMD : K12_LOCAL_SIZE_NV) *4096;
 	}
 	params.chunk2 = vulkanMiner.chunk2;
 }
@@ -290,7 +291,7 @@ void loadSPIRV(VulkanMiner &vulkanMiner) {
 	vulkanMiner.pipeline_cn6 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn6.spv");
 	vulkanMiner.pipeline_cn7 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/cn7.spv");
 	if (vulkanMiner.cpuMiner.type == AeonCrypto)
-		vulkanMiner.pipeline_k12 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, "spirv/k12.spv");
+		vulkanMiner.pipeline_k12 = loadShader(vulkanMiner.vkDevice, vulkanMiner.pipelineLayout,vulkanMiner.shader_module, vulkanMiner.alignment == 4 ? "spirv/k12_amd.spv" : "spirv/k12_nv.spv");
 	//shaderStats(vulkanMiner.vkDevice,vulkanMiner.pipeline_k12); exit(0);
 }
 
@@ -633,7 +634,7 @@ void *MinerThread(void *args)
 		minerIterate(miner);
 		hashRates[miner.index] = 1e9*(float)miner.threads[getCurrentIndex()] / (float)(now() - t0);
 		if (getVariant() == K12_ALGO)
-			hashRates[miner.index] *= 16*4096; // KangarooTwelve
+			hashRates[miner.index] *= (miner.alignment == 4 ? K12_LOCAL_SIZE_AMD : K12_LOCAL_SIZE_NV)/16*4096; // KangarooTwelve
 		t0 = now();
 	}
 	unmapMiningResults(miner);
