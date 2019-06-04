@@ -81,6 +81,7 @@ struct VulkanMiner {
 	int 	nrResults;
 	uint32_t iterationFactor;
 	uint32_t memFactor;
+	uint32_t alignment;
 	uint64_t   tmpResults[256];
 	uint64_t   cnrHeight;
 	uint64_t   cnrSubmittedHeight;
