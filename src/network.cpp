@@ -746,6 +746,7 @@ static void checkPool() {
 		mpool = n;
 		dpool = n;
 		if (getVariant() == K12_ALGO) {
+			cryptoType[1] = AeonCrypto;
 #ifdef __aarch64__
 			ports[1] = 3334;
 #else
